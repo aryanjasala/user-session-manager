@@ -1,0 +1,101 @@
+/* User Session Manager: profile section, Users > Sessions and the settings screen. */
+.usm-sessions {
+	max-width: 1100px;
+	margin-top: 8px;
+}
+
+.usm-sessions td,
+.usm-page .wp-list-table td {
+	vertical-align: middle;
+}
+
+.usm-device {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.usm-device .dashicons {
+	width: 28px;
+	height: 28px;
+	font-size: 28px;
+	color: #50575e;
+}
+
+.usm-device small,
+.usm-user small {
+	color: #646970;
+}
+
+.usm-badge {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 1px 8px;
+	border-radius: 10px;
+	background: #c5207a;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 18px;
+	vertical-align: middle;
+}
+
+.usm-sessions .usm-session.is-current > td,
+.usm-page .wp-list-table .usm-session.is-current > th,
+.usm-page .wp-list-table .usm-session.is-current > td {
+	background: #fcf0f6;
+}
+
+.usm-page .wp-list-table .column-user {
+	width: 24%;
+}
+
+.usm-page .wp-list-table .column-device {
+	width: 22%;
+}
+
+.usm-actions {
+	text-align: right;
+}
+
+.usm-ip {
+	font-family: Consolas, Monaco, monospace;
+}
+
+.usm-user {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.usm-user img {
+	border-radius: 50%;
+}
+
+.usm-page .row-actions .usm-danger {
+	color: #b32d2e;
+}
+
+.usm-summary {
+	color: #50575e;
+}
+
+.usm-policies {
+	max-width: 1000px;
+	margin-top: 12px;
+}
+
+.usm-policies th[scope="row"] {
+	font-weight: 600;
+	vertical-align: middle;
+}
+
+.usm-bulk {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+}
+
+.usm-profile {
+	margin: 24px 0;
+}
