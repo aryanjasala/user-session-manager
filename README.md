@@ -1,3 +1,5 @@
+<p align="center"><img src=".wordpress-org/icon-256x256.png" alt="" width="88"></p>
+
 <h1 align="center">User Session Manager</h1>
 
 <p align="center">
