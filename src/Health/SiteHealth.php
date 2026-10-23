@@ -92,7 +92,7 @@ final class SiteHealth implements Service {
 		if ( 0 === $admin['max_sessions'] && 0 === $admin['idle_minutes'] ) {
 			return $this->result(
 				'recommended',
-				__( 'Administrator sessions have no limit and never time out', 'user-session-manager' ),
+				__( 'Administrator sessions have no idle timeout or session limit', 'user-session-manager' ),
 				__( 'A forgotten administrator login on a shared or lost computer stays signed in until it expires. Set an idle timeout or a session limit for administrators.', 'user-session-manager' ),
 				$actions
 			);
