@@ -188,6 +188,11 @@ final class SessionsTable extends \WP_List_Table {
 	 * @return string
 	 */
 	protected function column_cb( $item ) {
+		// The browser in use is never signed out from a list, the same as its row actions.
+		if ( $item['current'] ) {
+			return '';
+		}
+
 		return sprintf(
 			'<label class="screen-reader-text" for="usm-cb-%1$s">%2$s</label><input type="checkbox" id="usm-cb-%1$s" name="handles[]" value="%1$s" />',
 			esc_attr( $item['handle'] ),
@@ -212,22 +217,43 @@ final class SessionsTable extends \WP_List_Table {
 			$name = sprintf( '<strong><a href="%1$s">%2$s</a></strong>', esc_url( add_query_arg( 'user_id', $user->ID, self_admin_url( 'user-edit.php' ) ) . '#' . ProfileSessions::ANCHOR ), esc_html( $user->user_login ) );
 		}
 
+		return sprintf(
+			'<span class="usm-user">%1$s<span>%2$s<br><small>%3$s</small></span></span>',
+			get_avatar( $user->ID, 32 ),
+			$name,
+			esc_html( $user->display_name !== $user->user_login ? $user->display_name : $user->user_email )
+		);
+	}
+
+	/**
+	 * Row actions under the user, with core's one "Show more details" toggle for small screens.
+	 *
+	 * @param array  $item        Row.
+	 * @param string $column_name Column.
+	 * @param string $primary     Primary column.
+	 * @return string
+	 */
+	protected function handle_row_actions( $item, $column_name, $primary ) {
+		$user = $column_name === $primary ? get_userdata( $item['user_id'] ) : false;
+		if ( ! $user ) {
+			return parent::handle_row_actions( $item, $column_name, $primary );
+		}
+
 		$actions = array();
 		if ( Access::can_manage( $user->ID ) && ! $item['current'] ) {
 			$actions['revoke'] = sprintf( '<a href="%1$s">%2$s</a>', esc_url( SessionsPage::action_url( 'revoke', $item['handle'] ) ), esc_html__( 'Sign out', 'user-session-manager' ) );
 		}
 		if ( Access::can_manage( $user->ID ) ) {
-			$actions['sign_out'] = sprintf( '<a href="%1$s" class="usm-danger">%2$s</a>', esc_url( SessionsPage::action_url( 'sign_out', (string) $user->ID ) ), esc_html__( 'Sign out everywhere', 'user-session-manager' ) );
+			// Both ask first. On your own row the default keeps this browser signed in.
+			$actions['sign_out'] = sprintf(
+				'<a href="%1$s" class="usm-danger">%2$s</a>',
+				esc_url( SessionsPage::confirm_url( $user->ID ) ),
+				get_current_user_id() === $user->ID ? esc_html__( 'Sign out everywhere else', 'user-session-manager' ) : esc_html__( 'Sign out everywhere', 'user-session-manager' )
+			);
 		}
 		$actions['filter'] = sprintf( '<a href="%1$s">%2$s</a>', esc_url( SessionsPage::url( array( 'user_id' => $user->ID ) ) ), esc_html__( 'Only this user', 'user-session-manager' ) );
 
-		return sprintf(
-			'<span class="usm-user">%1$s<span>%2$s<br><small>%3$s</small></span></span>%4$s',
-			get_avatar( $user->ID, 32 ),
-			$name,
-			esc_html( $user->display_name !== $user->user_login ? $user->display_name : $user->user_email ),
-			$this->row_actions( $actions )
-		);
+		return $this->row_actions( $actions );
 	}
 
 	/**

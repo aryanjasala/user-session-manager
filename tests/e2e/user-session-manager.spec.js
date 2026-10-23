@@ -69,7 +69,7 @@ test.describe( 'User Session Manager', () => {
 	};
 
 	test.beforeAll( () => {
-		for ( const [ login, role ] of [ [ 'alice', 'author' ], [ 'bob', 'editor' ], [ 'sam', 'subscriber' ] ] ) {
+		for ( const [ login, role ] of [ [ 'alice', 'author' ], [ 'bob', 'editor' ], [ 'sam', 'subscriber' ], [ 'carol', 'administrator' ] ] ) {
 			try {
 				wp( 'user', 'delete', login, '--yes' );
 			} catch ( error ) {
@@ -83,7 +83,7 @@ test.describe( 'User Session Manager', () => {
 	test.beforeEach( () => {
 		wp( 'option', 'delete', 'user_session_manager_settings' );
 		wpEval( `delete_option( 'usm_e2e_mail' ); delete_option( 'usm_e2e_idle' );
-			foreach ( array( 'alice', 'bob', 'sam' ) as $login ) {
+			foreach ( array( 'alice', 'bob', 'sam', 'carol' ) as $login ) {
 				$user = get_user_by( 'login', $login );
 				delete_user_meta( $user->ID, 'session_tokens' );
 				delete_user_meta( $user->ID, 'user_session_manager_devices' );
@@ -99,7 +99,7 @@ test.describe( 'User Session Manager', () => {
 	test.afterAll( () => {
 		wp( 'option', 'delete', 'user_session_manager_settings' );
 		wpEval( `@unlink( WPMU_PLUGIN_DIR . '/usm-e2e.php' ); delete_option( 'usm_e2e_mail' ); delete_option( 'usm_e2e_idle' );` );
-		for ( const login of [ 'alice', 'bob', 'sam' ] ) {
+		for ( const login of [ 'alice', 'bob', 'sam', 'carol' ] ) {
 			wp( 'user', 'delete', login, '--yes' );
 		}
 	} );
@@ -111,6 +111,8 @@ test.describe( 'User Session Manager', () => {
 		await laptop.page.goto( '/wp-admin/profile.php' );
 		const section = laptop.page.locator( '.usm-sessions' );
 		await expect( laptop.page.getByRole( 'heading', { name: 'Your sessions' } ) ).toBeVisible();
+		// Core's own "Log Out Everywhere Else" row would be a second control for the same thing.
+		await expect( laptop.page.locator( '.user-sessions-wrap' ) ).toBeHidden();
 		await expect( section.locator( '.usm-session' ) ).toHaveCount( 2 );
 		const current = section.locator( '.usm-session.is-current' );
 		await expect( current ).toContainText( 'Firefox on Windows' );
@@ -163,6 +165,7 @@ test.describe( 'User Session Manager', () => {
 		await open( browser, 'alice', IPHONE );
 		await open( browser, 'alice', FIREFOX );
 		await open( browser, 'bob', CHROME );
+		const aliceUrl = `${ SESSIONS }&user_id=${ id( 'alice' ) }`;
 
 		// The Users list counts sessions and links to them.
 		await page.goto( '/wp-admin/users.php' );
@@ -192,27 +195,112 @@ test.describe( 'User Session Manager', () => {
 			expect( html ).not.toContain( verifier );
 		}
 
-		// Row action: one session.
-		await page.goto( `${ SESSIONS }&orderby=user&order=asc` );
+		// Row action: one session. Filtered to alice, so the admin's own sessions from earlier runs never push her rows to page 2.
+		await page.goto( aliceUrl );
 		const iphoneRow = page.locator( 'tbody .usm-session', { hasText: 'Safari on iOS' } );
 		await iphoneRow.hover();
 		await iphoneRow.getByRole( 'link', { name: 'Sign out', exact: true } ).click();
-		await expect( page.locator( '.usm-notice' ) ).toContainText( '1 session signed out.' );
+		await expect( page.locator( '.usm-notice' ) ).toContainText( 'Session signed out.' );
 		expect( sessions( 'alice' ).map( ( s ) => s.ua ) ).toEqual( [ FIREFOX ] );
 
-		// Bulk: sign bob out everywhere.
+		// Bulk: sign bob out everywhere, after a confirmation.
+		await page.goto( `${ SESSIONS }&user_id=${ id( 'bob' ) }` );
 		await page.locator( 'tbody .usm-session', { hasText: 'bob' } ).locator( 'input[type=checkbox]' ).check();
 		await page.locator( '#bulk-action-selector-top' ).selectOption( 'sign_out' );
 		await page.locator( '#doaction' ).click();
+		await expect( page.getByRole( 'heading', { name: 'Sign out bob everywhere?' } ) ).toBeVisible();
+		expect( sessions( 'bob' ) ).toHaveLength( 1 );
+		await page.getByRole( 'button', { name: 'Sign out everywhere', exact: true } ).click();
 		await expect( page.locator( '.usm-notice' ) ).toContainText( '1 session signed out.' );
 		expect( sessions( 'bob' ) ).toHaveLength( 0 );
 
-		// Row action: a whole user.
+		// Row action: a whole user. It asks first, and Cancel changes nothing.
+		await page.goto( aliceUrl );
 		const aliceSession = page.locator( 'tbody .usm-session', { hasText: 'alice' } );
 		await aliceSession.hover();
 		await aliceSession.getByRole( 'link', { name: 'Sign out everywhere' } ).click();
-		await expect( page.locator( '.usm-notice' ) ).toContainText( '1 session signed out.' );
+		await expect( page.getByRole( 'heading', { name: 'Sign out alice everywhere?' } ) ).toBeVisible();
+		await expect( page.locator( '.usm-confirm' ) ).toContainText( 'alice is signed in on 1 device.' );
+		await page.getByRole( 'link', { name: 'Cancel' } ).click();
+		expect( sessions( 'alice' ) ).toHaveLength( 1 );
+
+		await aliceSession.hover();
+		await aliceSession.getByRole( 'link', { name: 'Sign out everywhere' } ).click();
+		await page.getByRole( 'button', { name: 'Sign out everywhere', exact: true } ).click();
+		await expect( page.locator( '.usm-notice' ) ).toContainText( 'alice was signed out of 1 session.' );
 		expect( sessions( 'alice' ) ).toHaveLength( 0 );
+	} );
+
+	test( 'signing yourself out everywhere asks, and keeps this browser unless told otherwise', async ( { browser } ) => {
+		const phone = await open( browser, 'carol', IPHONE );
+		const laptop = await open( browser, 'carol', CHROME );
+		const carolUrl = `${ SESSIONS }&user_id=${ id( 'carol' ) }`;
+
+		// The current session has no checkbox and no "Sign out": a list never signs out the browser in use.
+		await laptop.page.goto( carolUrl );
+		const current = laptop.page.locator( 'tbody .usm-session.is-current' );
+		await expect( current.locator( 'input[type=checkbox]' ) ).toHaveCount( 0 );
+		await current.hover();
+		await expect( current.getByRole( 'link', { name: 'Sign out', exact: true } ) ).toHaveCount( 0 );
+
+		// On your own row the action is "Sign out everywhere else", and the question says what happens to this browser.
+		await current.getByRole( 'link', { name: 'Sign out everywhere else' } ).click();
+		await expect( laptop.page.getByRole( 'heading', { name: 'Sign out your other devices?' } ) ).toBeVisible();
+		await expect( laptop.page.locator( '.usm-confirm' ) ).toContainText( 'You are signed in on 2 devices, this browser included.' );
+		await expect( laptop.page.getByRole( 'button', { name: 'Sign out everywhere else' } ) ).toHaveClass( /button-primary/ );
+		expect( sessions( 'carol' ) ).toHaveLength( 2 );
+
+		await laptop.page.getByRole( 'button', { name: 'Sign out everywhere else' } ).click();
+		await expect( laptop.page.locator( '.usm-notice' ) ).toContainText( 'Signed out 1 other session.' );
+		expect( sessions( 'carol' ).map( ( s ) => s.ua ) ).toEqual( [ CHROME ] );
+		expect( await signedIn( phone.page ) ).toBe( false );
+		expect( await signedIn( laptop.page ) ).toBe( true );
+
+		// "This browser too" ends every session and lands on the login screen, logged out.
+		await open( browser, 'carol', FIREFOX );
+		await laptop.page.goto( carolUrl );
+		await laptop.page.locator( 'tbody .usm-session.is-current' ).hover();
+		await laptop.page.locator( 'tbody .usm-session.is-current' ).getByRole( 'link', { name: 'Sign out everywhere else' } ).click();
+		await laptop.page.getByRole( 'button', { name: 'Sign out everywhere, this browser too' } ).click();
+		await expect( laptop.page ).toHaveURL( /wp-login\.php.*loggedout=true/ );
+		expect( sessions( 'carol' ) ).toHaveLength( 0 );
+		expect( await signedIn( laptop.page ) ).toBe( false );
+	} );
+
+	test( 'signing someone out from their profile asks first, and the counts use the site number format', async ( { page, browser } ) => {
+		await open( browser, 'alice', IPHONE );
+		await open( browser, 'alice', FIREFOX );
+
+		await page.goto( `/wp-admin/user-edit.php?user_id=${ id( 'alice' ) }` );
+		await expect( page.locator( '.user-sessions-wrap' ) ).toBeHidden();
+		await page.locator( '.usm-profile' ).getByRole( 'link', { name: 'Sign out everywhere' } ).click();
+		await expect( page.locator( '.usm-confirm' ) ).toContainText( 'alice is signed in on 2 devices.' );
+		expect( sessions( 'alice' ) ).toHaveLength( 2 );
+		await page.locator( '.usm-confirm' ).getByRole( 'link', { name: 'Sign out everywhere' } ).click();
+		await expect( page.locator( '.usm-notice' ) ).toContainText( 'alice was signed out of 2 sessions.' );
+		expect( sessions( 'alice' ) ).toHaveLength( 0 );
+
+		// 1,001 sessions read "1,001", like the pagination next to them.
+		wpEval( `$id = get_user_by( 'login', 'bob' )->ID; $all = array();
+			for ( $i = 0; $i < 1001; $i++ ) { $all[ hash( 'sha256', "usm-e2e-$i" ) ] = array( 'expiration' => time() + 3600, 'ip' => '203.0.113.9', 'ua' => 'curl/8', 'login' => time() - 60 ); }
+			update_user_meta( $id, 'session_tokens', $all );` );
+		await page.goto( `${ SESSIONS }&user_id=${ id( 'bob' ) }` );
+		await expect( page.locator( '.usm-summary' ) ).toContainText( '1,001 active sessions for 1 user.' );
+	} );
+
+	test( 'the screens fit a phone without sideways scrolling', async ( { browser } ) => {
+		const phone = await open( browser, 'carol', IPHONE );
+		await open( browser, 'carol', FIREFOX );
+		await phone.page.setViewportSize( { width: 375, height: 800 } );
+		for ( const url of [ SETTINGS, '/wp-admin/profile.php', `${ SESSIONS }&user_id=${ id( 'carol' ) }` ] ) {
+			await phone.page.goto( url );
+			expect( await phone.page.evaluate( () => document.documentElement.scrollWidth ), url ).toBeLessThanOrEqual( 375 );
+		}
+		// One "Show more details" toggle per row, as on core's lists.
+		const row = phone.page.locator( 'tbody .usm-session:not(.is-current)' );
+		await expect( row.locator( '.toggle-row' ) ).toHaveCount( 1 );
+		await row.locator( '.toggle-row' ).click();
+		await expect( row.getByRole( 'link', { name: 'Sign out everywhere else' } ) ).toBeVisible();
 	} );
 
 	test( 'a role limit of one signs out the older session', async ( { page, browser } ) => {
@@ -242,7 +330,7 @@ test.describe( 'User Session Manager', () => {
 		const first = await open( browser, 'alice', IPHONE );
 		const second = await open( browser, 'alice', FIREFOX );
 
-		await expect( second.page.locator( '#login_error' ) ).toContainText( 'You are already signed in on 1 device, the most this account allows.' );
+		await expect( second.page.locator( '#login_error' ) ).toContainText( 'This account can be signed in on 1 device at a time. It already has 1 active session.' );
 		expect( sessions( 'alice' ).map( ( s ) => s.ua ) ).toEqual( [ IPHONE ] );
 		expect( await signedIn( first.page ) ).toBe( true );
 	} );
@@ -333,7 +421,7 @@ test.describe( 'User Session Manager', () => {
 
 	test( 'Site Health recommends a policy for administrators', async ( { page } ) => {
 		await page.goto( '/wp-admin/site-health.php' );
-		await expect( page.getByText( 'Administrator sessions have no limit and never time out' ) ).toBeVisible( { timeout: 30_000 } );
+		await expect( page.getByText( 'Administrator sessions have no idle timeout or session limit' ) ).toBeVisible( { timeout: 30_000 } );
 
 		wp( 'user-session-manager', 'set-policy', 'administrator', '--idle-minutes=600' );
 		await page.goto( '/wp-admin/site-health.php' );

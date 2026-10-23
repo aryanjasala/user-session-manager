@@ -99,3 +99,89 @@
 .usm-profile {
 	margin: 24px 0;
 }
+
+.usm-danger-button.button {
+	border-color: #b32d2e;
+	color: #b32d2e;
+}
+
+.usm-danger-button.button:hover,
+.usm-danger-button.button:focus {
+	border-color: #8a2424;
+	color: #8a2424;
+}
+
+/* The question before a sign out everywhere. */
+.usm-confirm {
+	max-width: 760px;
+	margin: 16px 0;
+	padding: 4px 16px 8px;
+	border-left: 4px solid #d63638;
+	background: #fff;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.usm-confirm-users {
+	margin-left: 1.5em;
+	list-style: disc;
+}
+
+.usm-confirm-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+}
+
+/* Small screens: one card per session and per role, labels beside the values. */
+@media screen and (max-width: 782px) {
+	.usm-sessions thead,
+	.usm-policies thead {
+		display: none;
+	}
+
+	.usm-sessions,
+	.usm-sessions tbody,
+	.usm-sessions tr,
+	.usm-sessions td,
+	.usm-policies,
+	.usm-policies tbody,
+	.usm-policies tr,
+	.usm-policies th,
+	.usm-policies td {
+		display: block;
+		width: auto;
+		box-sizing: border-box;
+	}
+
+	.usm-sessions tr,
+	.usm-policies tr {
+		padding: 8px 0;
+		border-bottom: 1px solid #f0f0f1;
+	}
+
+	.usm-sessions td[data-colname],
+	.usm-policies td[data-colname] {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		padding: 4px 10px;
+	}
+
+	.usm-sessions td[data-colname]::before,
+	.usm-policies td[data-colname]::before {
+		content: attr(data-colname);
+		color: #50575e;
+		font-weight: 600;
+	}
+
+	.usm-actions {
+		text-align: left;
+	}
+
+	.usm-page .wp-list-table .column-user,
+	.usm-page .wp-list-table .column-device {
+		width: auto;
+	}
+}

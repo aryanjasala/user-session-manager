@@ -80,6 +80,21 @@ final class SessionsPage implements Service {
 	}
 
 	/**
+	 * URL of the question before a user is signed out everywhere. Showing it changes nothing.
+	 *
+	 * @param int $user_id User.
+	 * @return string
+	 */
+	public static function confirm_url( int $user_id ): string {
+		return self::url(
+			array(
+				'action' => 'sign_out',
+				'user'   => $user_id,
+			)
+		);
+	}
+
+	/**
 	 * Registers the screen under Users.
 	 */
 	public function add_page(): void {
@@ -110,7 +125,17 @@ final class SessionsPage implements Service {
 	}
 
 	/**
+	 * What the confirmation screen asks about, when a sign out everywhere waits for a yes.
+	 *
+	 * @var array{users: int[], handles: string[]}|null
+	 */
+	private ?array $confirm = null;
+
+	/**
 	 * Runs row and bulk actions, then redirects back to the list.
+	 *
+	 * Signing a user out everywhere asks first: the row action and the bulk
+	 * action both show a confirmation, and nothing ends until it is sent.
 	 */
 	public function handle(): void {
 		if ( ! Access::can_view_all() ) {
@@ -130,39 +155,160 @@ final class SessionsPage implements Service {
 			return;
 		}
 
-		$count = 0;
+		// phpcs:disable WordPress.Security.NonceVerification -- The nonce is checked below, before anything changes.
+		$confirmed = ! empty( $_POST['usm_confirmed'] );
+		$keep      = ! isset( $_POST['usm_scope'] ) || 'all' !== sanitize_key( wp_unslash( $_POST['usm_scope'] ) );
+		// phpcs:enable WordPress.Security.NonceVerification
+
+		$count   = 0;
+		$message = 'bulk';
+		$signed  = 0;
 		if ( isset( $_REQUEST['handles'] ) ) {
-			check_admin_referer( 'bulk-sessions' );
 			$handles = array_map( 'sanitize_text_field', (array) wp_unslash( $_REQUEST['handles'] ) );
-			$count   = $this->bulk( $action, $handles );
+			if ( 'sign_out' === $action && ! $confirmed ) {
+				check_admin_referer( 'bulk-sessions' );
+				$this->ask( self::users_of( $handles ), $handles );
+				return;
+			}
+			check_admin_referer( 'sign_out' === $action ? 'user_session_manager_confirm' : 'bulk-sessions' );
+			$count = $this->bulk( $action, $handles, $keep );
+			if ( 'sign_out' === $action && ! $keep && in_array( get_current_user_id(), self::users_of( $handles ), true ) ) {
+				$this->signed_out_here();
+			}
 		} elseif ( 'revoke' === $action && isset( $_REQUEST['handle'] ) ) {
 			$handle = sanitize_text_field( wp_unslash( $_REQUEST['handle'] ) );
 			check_admin_referer( 'user_session_manager_revoke_' . $handle );
 			$this->require_manage( (int) strtok( $handle, '-' ) );
-			$count = $this->sessions->revoke_handle( $handle, 'admin' ) ? 1 : 0;
+			$count   = $this->sessions->revoke_handle( $handle, 'admin' ) ? 1 : 0;
+			$message = $count ? 'revoked' : 'not_found';
 		} elseif ( 'sign_out' === $action && isset( $_REQUEST['user'] ) ) {
 			$user_id = absint( $_REQUEST['user'] );
-			check_admin_referer( 'user_session_manager_sign_out_' . $user_id );
 			$this->require_manage( $user_id );
-			$count = $this->sessions->sign_out_everywhere( $user_id, 'admin' );
+			if ( ! $confirmed ) {
+				$this->ask( array( $user_id ), array() );
+				return;
+			}
+			check_admin_referer( 'user_session_manager_confirm' );
+			if ( get_current_user_id() === $user_id && $keep ) {
+				$count   = $this->sessions->revoke_others( $user_id, $this->sessions->current_verifier(), 'admin' );
+				$message = 'signed_out_others';
+			} else {
+				$count   = $this->sessions->sign_out_everywhere( $user_id, 'admin' );
+				$message = 'signed_out_user';
+				$signed  = $user_id;
+				if ( get_current_user_id() === $user_id ) {
+					$this->signed_out_here();
+				}
+			}
 		} else {
 			return;
 		}
 
 		// Keep the search, filter, sorting and page, drop the action.
-		$keep = array();
+		$args = array();
 		foreach ( array( 's', 'role', 'user_id', 'orderby', 'order', 'paged' ) as $key ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Checked above.
 			if ( isset( $_REQUEST[ $key ] ) && '' !== $_REQUEST[ $key ] ) {
 				// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Checked above.
-				$keep[ $key ] = sanitize_text_field( wp_unslash( $_REQUEST[ $key ] ) );
+				$args[ $key ] = sanitize_text_field( wp_unslash( $_REQUEST[ $key ] ) );
 			}
 		}
-		$keep['usm_message'] = 'bulk';
-		$keep['usm_count']   = $count;
+		$args['usm_message'] = $message;
+		$args['usm_count']   = $count;
+		if ( $signed ) {
+			$args['usm_user'] = $signed;
+		}
 
-		wp_safe_redirect( self::url( $keep ) );
+		wp_safe_redirect( self::url( $args ) );
 		exit;
+	}
+
+	/**
+	 * The users that chosen sessions belong to.
+	 *
+	 * @param string[] $handles Handles.
+	 * @return int[]
+	 */
+	public static function users_of( array $handles ): array {
+		$users = array();
+		foreach ( $handles as $handle ) {
+			$user_id = (int) strtok( (string) $handle, '-' );
+			if ( $user_id > 0 ) {
+				$users[ $user_id ] = $user_id;
+			}
+		}
+
+		return array_values( $users );
+	}
+
+	/**
+	 * Holds a sign out everywhere until it is confirmed.
+	 *
+	 * @param int[]    $users   Users to sign out.
+	 * @param string[] $handles Chosen sessions, for the bulk action.
+	 */
+	private function ask( array $users, array $handles ): void {
+		$this->confirm = array(
+			'users'   => array_values( array_filter( $users, array( Access::class, 'can_manage' ) ) ),
+			'handles' => $handles,
+		);
+	}
+
+	/**
+	 * The person signed their own browser out: clear the cookie and say so on the login screen.
+	 */
+	private function signed_out_here(): void {
+		wp_clear_auth_cookie();
+		wp_safe_redirect( add_query_arg( 'loggedout', 'true', wp_login_url( self::url() ) ) );
+		exit;
+	}
+
+	/**
+	 * The question on the confirmation screen.
+	 *
+	 * @param int[] $users    Users to sign out.
+	 * @param int   $sessions Their active sessions.
+	 * @param bool  $you      Whether the current user is one of them.
+	 * @return string
+	 */
+	public static function confirm_message( array $users, int $sessions, bool $you ): string {
+		$user = 1 === count( $users ) ? get_userdata( (int) $users[0] ) : false;
+		if ( $you && 1 === count( $users ) ) {
+			$message = sprintf(
+				/* translators: %d: number of sessions. */
+				_n( 'You are signed in on %d device, this browser included.', 'You are signed in on %d devices, this browser included.', $sessions, 'user-session-manager' ),
+				$sessions
+			) . ' ' . __( 'Sign out everywhere else keeps you signed in here. Sign out everywhere also signs out this browser, and you will need to log in again.', 'user-session-manager' );
+		} elseif ( $user ) {
+			$message = sprintf(
+				/* translators: 1: user login, 2: number of sessions. */
+				_n( '%1$s is signed in on %2$s device. Each one is signed out the next time it loads a page.', '%1$s is signed in on %2$s devices. Each one is signed out the next time it loads a page.', $sessions, 'user-session-manager' ),
+				$user->user_login,
+				number_format_i18n( $sessions )
+			);
+		} else {
+			$message = sprintf(
+				/* translators: 1: number of users, 2: number of sessions. */
+				__( '%1$s users with %2$s active sessions between them. Each session is signed out the next time it loads a page.', 'user-session-manager' ),
+				number_format_i18n( count( $users ) ),
+				number_format_i18n( $sessions )
+			);
+			if ( $you ) {
+				$message .= ' ' . __( 'You are one of them: choose whether this browser stays signed in.', 'user-session-manager' );
+			}
+		}
+
+		/**
+		 * Filters the question asked before users are signed out everywhere.
+		 *
+		 * @param string $message  The question.
+		 * @param int[]  $users    Users to sign out.
+		 * @param int    $sessions Their active sessions.
+		 * @param bool   $you      Whether the person asking is one of them.
+		 */
+		$filtered = (string) apply_filters( 'user_session_manager_confirm_message', $message, $users, $sessions, $you );
+
+		return '' !== trim( $filtered ) ? $filtered : $message;
 	}
 
 	/**
@@ -170,9 +316,10 @@ final class SessionsPage implements Service {
 	 *
 	 * @param string   $action  revoke or sign_out.
 	 * @param string[] $handles Handles.
+	 * @param bool     $keep    Keep the current session when the person signs themselves out everywhere.
 	 * @return int Sessions ended.
 	 */
-	public function bulk( string $action, array $handles ): int {
+	public function bulk( string $action, array $handles, bool $keep = true ): int {
 		$handles = array_values( array_unique( array_filter( $handles ) ) );
 
 		/**
@@ -194,7 +341,9 @@ final class SessionsPage implements Service {
 				$count += $this->sessions->revoke_handle( $handle, 'bulk' ) ? 1 : 0;
 			} elseif ( ! isset( $users[ $user_id ] ) ) {
 				$users[ $user_id ] = true;
-				$count            += $this->sessions->sign_out_everywhere( $user_id, 'bulk' );
+				$count            += $keep && get_current_user_id() === $user_id
+					? $this->sessions->revoke_others( $user_id, $this->sessions->current_verifier(), 'bulk' )
+					: $this->sessions->sign_out_everywhere( $user_id, 'bulk' );
 			}
 		}
 
@@ -225,6 +374,11 @@ final class SessionsPage implements Service {
 	 * Prints the screen.
 	 */
 	public function render(): void {
+		if ( null !== $this->confirm ) {
+			$this->render_confirm( $this->confirm['users'], $this->confirm['handles'] );
+			return;
+		}
+
 		$table = new SessionsTable( $this->sessions );
 		$table->prepare_items();
 
@@ -249,10 +403,10 @@ final class SessionsPage implements Service {
 					sprintf(
 						/* translators: 1: number of sessions, such as 3 active sessions. 2: number of users, such as 2 users. */
 						__( '%1$s for %2$s.', 'user-session-manager' ),
-						/* translators: %d: number of sessions. */
-						sprintf( _n( '%d active session', '%d active sessions', $total, 'user-session-manager' ), $total ),
-						/* translators: %d: number of users. */
-						sprintf( _n( '%d user', '%d users', $table->users, 'user-session-manager' ), $table->users )
+						/* translators: %s: number of sessions. */
+						sprintf( _n( '%s active session', '%s active sessions', $total, 'user-session-manager' ), number_format_i18n( $total ) ),
+						/* translators: %s: number of users. */
+						sprintf( _n( '%s user', '%s users', $table->users, 'user-session-manager' ), number_format_i18n( $table->users ) )
 					)
 				);
 				if ( $filtered_user ) {
@@ -277,6 +431,92 @@ final class SessionsPage implements Service {
 				$table->display();
 				?>
 			</form>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Asks before users are signed out everywhere, and says whether this browser goes too.
+	 *
+	 * @param int[]    $users   Users to sign out.
+	 * @param string[] $handles Chosen sessions, for the bulk action.
+	 */
+	private function render_confirm( array $users, array $handles ): void {
+		$self     = in_array( get_current_user_id(), $users, true );
+		$sessions = 0;
+		foreach ( $users as $user_id ) {
+			$sessions += $this->sessions->count( $user_id );
+		}
+		$single = 1 === count( $users ) ? get_userdata( $users[0] ) : false;
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only list arguments carried through the form.
+		$keep = array();
+		foreach ( array( 's', 'role', 'user_id', 'orderby', 'order', 'paged' ) as $key ) {
+			if ( isset( $_REQUEST[ $key ] ) && '' !== $_REQUEST[ $key ] && ! is_array( $_REQUEST[ $key ] ) ) {
+				$keep[ $key ] = sanitize_text_field( wp_unslash( $_REQUEST[ $key ] ) );
+			}
+		}
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+		$cancel = self::url( $keep );
+
+		if ( $self && 1 === count( $users ) ) {
+			$title = __( 'Sign out your other devices?', 'user-session-manager' );
+		} elseif ( $single ) {
+			/* translators: %s: user login. */
+			$title = sprintf( __( 'Sign out %s everywhere?', 'user-session-manager' ), $single->user_login );
+		} else {
+			/* translators: %s: number of users. */
+			$title = sprintf( _n( 'Sign out %s user everywhere?', 'Sign out %s users everywhere?', count( $users ), 'user-session-manager' ), number_format_i18n( count( $users ) ) );
+		}
+		?>
+		<div class="wrap usm-page">
+			<h1><?php esc_html_e( 'Sessions', 'user-session-manager' ); ?></h1>
+			<?php if ( ! $users ) : ?>
+				<div class="notice notice-warning inline"><p><?php esc_html_e( 'None of the chosen users can be signed out from here.', 'user-session-manager' ); ?></p></div>
+				<p><a class="button" href="<?php echo esc_url( $cancel ); ?>"><?php esc_html_e( 'Back to sessions', 'user-session-manager' ); ?></a></p>
+			<?php else : ?>
+				<form method="post" action="<?php echo esc_url( self::url() ); ?>" class="usm-confirm">
+					<h2 id="usm-confirm-title"><?php echo esc_html( $title ); ?></h2>
+					<p><?php echo wp_kses_post( self::confirm_message( $users, $sessions, $self ) ); ?></p>
+					<?php if ( ! $single ) : ?>
+						<ul class="usm-confirm-users">
+							<?php foreach ( array_slice( $users, 0, 20 ) as $user_id ) : ?>
+								<?php $user = get_userdata( $user_id ); ?>
+								<li><?php echo esc_html( $user ? $user->user_login : (string) $user_id ); ?><?php echo get_current_user_id() === $user_id ? ' ' . esc_html__( '(you)', 'user-session-manager' ) : ''; ?></li>
+							<?php endforeach; ?>
+							<?php if ( count( $users ) > 20 ) : ?>
+								<li>
+									<?php
+									/* translators: %s: number of users. */
+									echo esc_html( sprintf( __( 'and %s more', 'user-session-manager' ), number_format_i18n( count( $users ) - 20 ) ) );
+									?>
+								</li>
+							<?php endif; ?>
+						</ul>
+					<?php endif; ?>
+					<?php wp_nonce_field( 'user_session_manager_confirm' ); ?>
+					<input type="hidden" name="action" value="sign_out">
+					<input type="hidden" name="usm_confirmed" value="1">
+					<?php if ( $handles ) : ?>
+						<?php foreach ( $handles as $handle ) : ?>
+							<input type="hidden" name="handles[]" value="<?php echo esc_attr( $handle ); ?>">
+						<?php endforeach; ?>
+					<?php else : ?>
+						<input type="hidden" name="user" value="<?php echo esc_attr( (string) $users[0] ); ?>">
+					<?php endif; ?>
+					<?php foreach ( $keep as $key => $value ) : ?>
+						<input type="hidden" name="<?php echo esc_attr( $key ); ?>" value="<?php echo esc_attr( $value ); ?>">
+					<?php endforeach; ?>
+					<p class="usm-confirm-actions">
+						<?php if ( $self ) : ?>
+							<button type="submit" name="usm_scope" value="others" class="button button-primary"><?php echo $single ? esc_html__( 'Sign out everywhere else', 'user-session-manager' ) : esc_html__( 'Sign out, but keep this browser', 'user-session-manager' ); ?></button>
+							<button type="submit" name="usm_scope" value="all" class="button usm-danger-button"><?php esc_html_e( 'Sign out everywhere, this browser too', 'user-session-manager' ); ?></button>
+						<?php else : ?>
+							<button type="submit" name="usm_scope" value="all" class="button button-primary"><?php esc_html_e( 'Sign out everywhere', 'user-session-manager' ); ?></button>
+						<?php endif; ?>
+						<a class="button-link" href="<?php echo esc_url( $cancel ); ?>"><?php esc_html_e( 'Cancel', 'user-session-manager' ); ?></a>
+					</p>
+				</form>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
