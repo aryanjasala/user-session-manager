@@ -41,8 +41,12 @@ async function signIn( browser, login, userAgent ) {
 	const context = await browser.newContext( { storageState: { cookies: [], origins: [] }, userAgent } );
 	const page = await context.newPage();
 	await page.goto( '/wp-login.php' );
+	// wp-login.php moves focus to the username field 200 ms after it loads. Wait for that,
+	// or the password can be typed into the username field when the timer fires mid-fill.
+	await page.waitForFunction( () => document.activeElement && document.activeElement.id === 'user_login', null, { timeout: 5000 } ).catch( () => null );
 	await page.locator( '#user_login' ).fill( login );
 	await page.locator( '#user_pass' ).fill( PASSWORD );
+	await expect( page.locator( '#user_login' ) ).toHaveValue( login );
 	// The page after the form only commits once the login POST has finished on the server (session saved, email sent).
 	await Promise.all( [ page.waitForEvent( 'framenavigated', ( frame ) => frame === page.mainFrame() ), page.locator( '#wp-submit' ).click() ] );
 	await page.waitForLoadState( 'domcontentloaded' );
