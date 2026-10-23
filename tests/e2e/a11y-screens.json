@@ -1,0 +1,82 @@
+{
+  "$comment": "Screens tests/e2e/a11y.spec.js checks with axe-core. This file belongs to the plugin: apply-template.py only writes it when it is missing. The fields are described in docs/DEVELOPMENT.md.",
+  "include": ["#wpbody-content"],
+  "exclude": [],
+  "screens": [
+    {
+      "name": "Profile > Your sessions",
+      "url": "/wp-admin/profile.php",
+      "include": [".usm-profile"]
+    },
+    {
+      "name": "Another user's profile with sessions and the sign-out question",
+      "setup": [
+        { "js": "seed.js", "call": "createPeople" },
+        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4], ["maria", "android", "203.0.113.90", 1800, 95]]] },
+        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+      ],
+      "url": "/wp-admin/user-edit.php?user_id={maria}&usm_confirm=sign_out",
+      "steps": [{ "waitFor": ".usm-confirm-inline" }],
+      "include": [".usm-profile"],
+      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+    },
+    {
+      "name": "Users > Sessions with every signed-in device",
+      "setup": [
+        { "js": "seed.js", "call": "createPeople" },
+        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4], ["james", "edge", "198.51.100.12", 50, 12], ["priya", "iphone", "192.0.2.200", 1200, 180]]] }
+      ],
+      "url": "/wp-admin/users.php?page=user-sessions",
+      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+    },
+    {
+      "name": "Users > Sessions, confirming a sign out everywhere",
+      "setup": [
+        { "js": "seed.js", "call": "createPeople" },
+        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4]]] },
+        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+      ],
+      "url": "/wp-admin/users.php?page=user-sessions&action=sign_out&user={maria}",
+      "steps": [{ "waitFor": ".usm-confirm" }],
+      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+    },
+    {
+      "name": "Users list with the Sessions column",
+      "setup": [
+        { "js": "seed.js", "call": "createPeople" },
+        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4]]] }
+      ],
+      "url": "/wp-admin/users.php",
+      "include": [".column-usm_sessions"],
+      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+    },
+    {
+      "name": "Settings > User Sessions with policies per role",
+      "setup": [
+        ["user-session-manager", "set-policy", "administrator", "--max-sessions=3", "--idle-minutes=60", "--lifetime-hours=12"],
+        ["user-session-manager", "set-policy", "subscriber", "--max-sessions=1", "--remember-hours=720"],
+        ["user-session-manager", "settings", "--new-device-email=on"]
+      ],
+      "url": "/wp-admin/options-general.php?page=user-session-manager",
+      "cleanup": [["option", "delete", "user_session_manager_settings"]]
+    },
+    {
+      "name": "Login refused over the session limit",
+      "setup": [
+        { "js": "seed.js", "call": "createPeople" },
+        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4]]] },
+        ["user-session-manager", "set-policy", "editor", "--max-sessions=1"],
+        ["user-session-manager", "settings", "--limit-mode=block"]
+      ],
+      "loggedOut": true,
+      "url": "/wp-login.php",
+      "steps": [{ "logIn": "maria", "password": "demo-password-123" }, { "waitFor": "#login_error" }],
+      "include": ["#login_error"],
+      "cleanup": [
+        ["option", "delete", "user_session_manager_settings"],
+        { "js": "seed.js", "call": "removePeople" }
+      ]
+    }
+  ],
+  "skip": {}
+}

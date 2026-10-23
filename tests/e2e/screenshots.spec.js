@@ -1,6 +1,6 @@
 // Regenerates .wordpress-org/screenshot-N.png (readme.txt "== Screenshots ==" and README.md).
 // Run on demand: npm run screenshots
-const { test, expect, wp } = require( './utils' );
+const { test, expect, wp, logIn } = require( './utils' );
 const { prepareSite, shot } = require( './utils/media' );
 const { UA, createPeople, removePeople, addSessions, clearSessions } = require( './seed' );
 
@@ -17,10 +17,7 @@ test.describe( 'Screenshots', () => {
 		// The admin signs in from a Mac, so "This device" reads well.
 		context = await browser.newContext( { storageState: { cookies: [], origins: [] }, userAgent: UA.mac, viewport: { width: 1280, height: 900 }, deviceScaleFactor: 2 } );
 		page = await context.newPage();
-		await page.goto( '/wp-login.php' );
-		await page.locator( '#user_login' ).fill( 'admin' );
-		await page.locator( '#user_pass' ).fill( 'admin' );
-		await page.locator( '#wp-submit' ).click();
+		await logIn( page, 'admin', 'admin' );
 		await page.waitForURL( /wp-admin/ );
 
 		addSessions( [
@@ -69,10 +66,7 @@ test.describe( 'Screenshots', () => {
 		wp( 'user-session-manager', 'settings', '--limit-mode=block' );
 		const other = await browser.newContext( { storageState: { cookies: [], origins: [] }, userAgent: UA.ipad, viewport: { width: 1280, height: 900 }, deviceScaleFactor: 2 } );
 		const login = await other.newPage();
-		await login.goto( '/wp-login.php' );
-		await login.locator( '#user_login' ).fill( 'maria' );
-		await login.locator( '#user_pass' ).fill( 'demo-password-123' );
-		await login.locator( '#wp-submit' ).click();
+		await logIn( login, 'maria', 'demo-password-123' );
 		await expect( login.locator( '#login_error' ) ).toContainText( 'This account can be signed in on 2 devices at a time.' );
 		await shot( login, 4, { clip: { x: 390, y: 0, width: 500, height: 620 } } );
 		await other.close();

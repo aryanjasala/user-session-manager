@@ -1,4 +1,4 @@
-const { test, expect, wp, wpEval } = require( './utils' );
+const { test, expect, wp, wpEval, logInAs } = require( './utils' );
 
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 const FIREFOX = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
@@ -38,19 +38,7 @@ const mail = () => JSON.parse( wpEval( `echo wp_json_encode( get_option( 'usm_e2
  * @return {Promise<{context: import('@playwright/test').BrowserContext, page: import('@playwright/test').Page}>}
  */
 async function signIn( browser, login, userAgent ) {
-	const context = await browser.newContext( { storageState: { cookies: [], origins: [] }, userAgent } );
-	const page = await context.newPage();
-	await page.goto( '/wp-login.php' );
-	// wp-login.php moves focus to the username field 200 ms after it loads. Wait for that,
-	// or the password can be typed into the username field when the timer fires mid-fill.
-	await page.waitForFunction( () => document.activeElement && document.activeElement.id === 'user_login', null, { timeout: 5000 } ).catch( () => null );
-	await page.locator( '#user_login' ).fill( login );
-	await page.locator( '#user_pass' ).fill( PASSWORD );
-	await expect( page.locator( '#user_login' ) ).toHaveValue( login );
-	// The page after the form only commits once the login POST has finished on the server (session saved, email sent).
-	await Promise.all( [ page.waitForEvent( 'framenavigated', ( frame ) => frame === page.mainFrame() ), page.locator( '#wp-submit' ).click() ] );
-	await page.waitForLoadState( 'domcontentloaded' );
-	return { context, page };
+	return logInAs( browser, login, PASSWORD, { userAgent } );
 }
 
 /**
