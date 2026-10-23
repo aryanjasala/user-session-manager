@@ -34,7 +34,7 @@ final class LimitsTest extends SessionTestCase {
 		$this->session( 7, 'two' );
 
 		Actions\expectDone( 'user_session_manager_login_blocked' )->once()->with( $user, 2, 2 );
-		Filters\expectApplied( 'user_session_manager_blocked_login_message' )->once()->with( \Mockery::type( 'string' ), $user, 2 )->andReturn( 'Too many devices.' );
+		Filters\expectApplied( 'user_session_manager_blocked_login_message' )->once()->with( \Mockery::type( 'string' ), $user, 2, 2 )->andReturn( 'Too many devices.' );
 
 		$limits = $this->limits();
 		$limits->start_sign_on();
@@ -81,7 +81,25 @@ final class LimitsTest extends SessionTestCase {
 	public function test_an_empty_message_falls_back_to_the_default(): void {
 		Filters\expectApplied( 'user_session_manager_blocked_login_message' )->once()->andReturn( '  ' );
 
-		$this->assertStringContainsString( 'already signed in on 3 devices', $this->limits()->blocked_message( $this->user( 7, 'alice' ), 3 ) );
+		$this->assertStringContainsString( 'signed in on 3 devices at a time', $this->limits()->blocked_message( $this->user( 7, 'alice' ), 3 ) );
+	}
+
+	public function test_the_refusal_states_the_limit_and_the_real_count_apart(): void {
+		$user = $this->user( 7, 'alice' );
+		$this->policies( array( 'author' => array( 'max_sessions' => 1 ) ), array( 'limit_mode' => 'block' ) );
+		foreach ( array( 'one', 'two', 'three', 'four' ) as $token ) {
+			$this->session( 7, $token );
+		}
+
+		Actions\expectDone( 'user_session_manager_login_blocked' )->once()->with( $user, 1, 4 );
+
+		$limits = $this->limits();
+		$limits->start_sign_on();
+		$message = $limits->block_over_limit( $user )->get_error_message();
+
+		$this->assertStringContainsString( 'This account can be signed in on 1 device at a time.', $message );
+		$this->assertStringContainsString( 'It already has 4 active sessions.', $message );
+		$this->assertStringNotContainsString( 'signed in on 1 device, the most', $message );
 	}
 
 	public function test_evict_mode_signs_out_the_oldest_and_announces_the_new_session(): void {

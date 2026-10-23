@@ -147,7 +147,7 @@ final class SettingsPage implements Service {
 							<tr data-role="<?php echo esc_attr( $role ); ?>">
 								<th scope="row"><?php echo esc_html( translate_user_role( $name ) ); ?></th>
 								<?php foreach ( Settings::POLICY_DEFAULTS as $key => $default ) : ?>
-									<td>
+									<td data-colname="<?php echo esc_attr( $this->field_label( $key ) ); ?>">
 										<label class="screen-reader-text" for="<?php echo esc_attr( "usm-{$role}-{$key}" ); ?>"><?php echo esc_html( translate_user_role( $name ) . ': ' . $this->field_label( $key ) ); ?></label>
 										<input type="number" class="small-text" min="0" max="<?php echo esc_attr( (string) Settings::POLICY_MAX[ $key ] ); ?>" step="1" id="<?php echo esc_attr( "usm-{$role}-{$key}" ); ?>" name="<?php echo esc_attr( "policies[{$role}][{$key}]" ); ?>" value="<?php echo esc_attr( (string) $policy[ $key ] ); ?>">
 									</td>

@@ -42,7 +42,11 @@ test( 'demo: sign out a lost phone, then a whole user', async ( { browser } ) =>
 			await demo.moveTo( maria.locator( '.column-user' ) );
 			await demo.pause( 600 );
 			await demo.click( maria.getByRole( 'link', { name: 'Sign out everywhere' } ), 300 );
-			await expect( page.locator( '.usm-notice' ) ).toContainText( '2 sessions signed out.' );
+			// It asks first.
+			await expect( page.getByRole( 'heading', { name: 'Sign out maria everywhere?' } ) ).toBeVisible();
+			await demo.pause( 1500 );
+			await demo.click( page.getByRole( 'button', { name: 'Sign out everywhere', exact: true } ), 300 );
+			await expect( page.locator( '.usm-notice' ) ).toContainText( 'maria was signed out of 2 sessions.' );
 			await demo.pause( 2000 );
 		} );
 	} finally {

@@ -41,6 +41,14 @@ Sessions are deleted when they end, so the plugin keeps a short memory per user 
 
 The first login the plugin sees for a user only fills that memory (from their current sessions too), so turning the email on does not email everyone.
 
+## Signing out everywhere
+
+"Sign out everywhere" never runs on one click. On Users > Sessions, the row action and the bulk action both show a question first, with how many devices are signed in, and nothing ends until it is answered. On someone else's profile the button asks the same way.
+
+On your own account the row action is "Sign out everywhere else", and the question has two answers. **Sign out everywhere else** is the default: this browser stays signed in, like core's "Log Out Everywhere Else". **Sign out everywhere, this browser too** ends every session and goes to the login screen. The browser you are using has no checkbox and no "Sign out" in the list, so a bulk action never signs it out by accident.
+
+On profiles that show the sessions table, core's own "Log Out Everywhere Else" row is hidden, since the table does the same (`user_session_manager_hide_core_sessions`).
+
 ## Hooks
 
 | Hook | Type | Use |
@@ -58,7 +66,10 @@ The first login the plugin sees for a user only fills that memory (from their cu
 | `user_session_manager_new_device_email` | filter | `( array\|false $email, WP_User $user, array $session )`. `to`, `subject`, `message` and `headers`. Return false or an empty `to` to skip it |
 | `user_session_manager_device_memory_days` | filter | `( int $days )`. Days a browser and IP address stay known. From the setting, 1 to 365 |
 | `user_session_manager_device_limit` | filter | `( int $max )`. Browser and IP address pairs remembered per user. Default 50 |
-| `user_session_manager_blocked_login_message` | filter | `( string $message, WP_User $user, int $max )`. The login form error in refuse mode. Basic HTML allowed |
+| `user_session_manager_blocked_login_message` | filter | `( string $message, WP_User $user, int $max, int $active )`. The login form error in refuse mode. It states the limit and the sessions the user has now apart, since a lowered limit can leave someone over it. Basic HTML allowed |
+| `user_session_manager_confirm_message` | filter | `( string $message, int[] $users, int $sessions, bool $you )`. The question asked before users are signed out everywhere. `$you` is true when the person asking is one of them, and then the default answer keeps their browser signed in |
+| `user_session_manager_notice` | filter | `( string $text, string $code, int $count, string $user )`. The notice after a sign out from a screen. `$code` is `revoked`, `not_found`, `signed_out_others`, `signed_out_user` or `bulk`; `$user` is the login for `signed_out_user` |
+| `user_session_manager_hide_core_sessions` | filter | `( bool $hide, int $user_id )`. Whether core's "Log Out Everywhere Else" row is hidden on a profile that shows the sessions table. Default true |
 | `user_session_manager_list_per_page` | filter | `( int $per_page )`. Rows per page on Users > Sessions. Default 20 |
 | `user_session_manager_max_users_scanned` | filter | `( int $max )`. Signed-in users one listing reads at most. Default 10000 |
 | `user_session_manager_prune_batch` | filter | `( int $size )`. Users one run of the hourly clean-up looks at. Default 500 |

@@ -128,6 +128,11 @@ abstract class SessionTestCase extends TestCase {
 		Functions\when( 'wp_cache_delete' )->justReturn( true );
 		Functions\when( 'wp_doing_ajax' )->justReturn( false );
 		Functions\when( 'wp_doing_cron' )->justReturn( false );
+		Functions\when( 'number_format_i18n' )->alias(
+			static function ( $number ) {
+				return number_format( (float) $number );
+			}
+		);
 	}
 
 	/**

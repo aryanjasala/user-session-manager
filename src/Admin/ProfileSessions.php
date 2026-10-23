@@ -60,9 +60,37 @@ final class ProfileSessions implements Service {
 	 * @param string $hook_suffix Screen.
 	 */
 	public function enqueue_styles( $hook_suffix ): void {
-		if ( in_array( $hook_suffix, array( 'profile.php', 'user-edit.php' ), true ) ) {
-			wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array(), VERSION );
+		if ( ! in_array( $hook_suffix, array( 'profile.php', 'user-edit.php' ), true ) ) {
+			return;
 		}
+
+		wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array(), VERSION );
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- The user being edited, read-only.
+		$user_id = 'profile.php' === $hook_suffix ? get_current_user_id() : ( isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : 0 );
+		if ( $this->hides_core_row( $user_id ) ) {
+			wp_add_inline_style( 'user-session-manager', '.user-sessions-wrap{display:none}' );
+		}
+	}
+
+	/**
+	 * Whether core's own "Sessions" row is hidden on a profile, since this section does the same and more.
+	 *
+	 * @param int $user_id User being edited.
+	 * @return bool
+	 */
+	public function hides_core_row( int $user_id ): bool {
+		if ( $user_id < 1 || ! $this->sessions->is_supported() || ! Access::can_manage( $user_id ) ) {
+			return false;
+		}
+
+		/**
+		 * Filters whether core's "Log Out Everywhere Else" row is hidden on profiles that show the sessions table.
+		 *
+		 * @param bool $hide    Default true.
+		 * @param int  $user_id User being edited.
+		 */
+		return (bool) apply_filters( 'user_session_manager_hide_core_sessions', true, $user_id );
 	}
 
 	/**
@@ -114,6 +142,8 @@ final class ProfileSessions implements Service {
 		$own  = get_current_user_id() === $user->ID;
 		$rows = $this->sessions->list_for_user( $user->ID );
 		$back = $own ? self_admin_url( 'profile.php' ) : add_query_arg( 'user_id', $user->ID, self_admin_url( 'user-edit.php' ) );
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only shows the question; the sign out itself has a nonce.
+		$confirm = isset( $_GET['usm_confirm'] ) && 'sign_out' === sanitize_key( wp_unslash( $_GET['usm_confirm'] ) );
 		?>
 		<div class="usm-profile">
 		<h2 id="<?php echo esc_attr( self::ANCHOR ); ?>"><?php echo $own ? esc_html__( 'Your sessions', 'user-session-manager' ) : esc_html__( 'Sessions', 'user-session-manager' ); ?></h2>
@@ -148,11 +178,11 @@ final class ProfileSessions implements Service {
 				<tbody>
 					<?php foreach ( $rows as $row ) : ?>
 						<tr class="usm-session<?php echo $row['current'] ? ' is-current' : ''; ?>" data-handle="<?php echo esc_attr( $row['handle'] ); ?>">
-							<td><?php echo wp_kses( Display::device( $row ), Display::ALLOWED ); ?></td>
-							<td class="usm-ip"><?php echo esc_html( '' !== $row['ip'] ? $row['ip'] : __( 'Unknown', 'user-session-manager' ) ); ?></td>
-							<td><?php echo wp_kses( Display::time( $row['login'] ), Display::ALLOWED ); ?></td>
-							<td><?php echo wp_kses( Display::time( $row['last_seen'] ), Display::ALLOWED ); ?></td>
-							<td><?php echo wp_kses( Display::time( $row['expiration'] ), Display::ALLOWED ); ?></td>
+							<td class="usm-device-cell"><?php echo wp_kses( Display::device( $row ), Display::ALLOWED ); ?></td>
+							<td class="usm-ip" data-colname="<?php esc_attr_e( 'IP address', 'user-session-manager' ); ?>"><?php echo esc_html( '' !== $row['ip'] ? $row['ip'] : __( 'Unknown', 'user-session-manager' ) ); ?></td>
+							<td data-colname="<?php esc_attr_e( 'Signed in', 'user-session-manager' ); ?>"><?php echo wp_kses( Display::time( $row['login'] ), Display::ALLOWED ); ?></td>
+							<td data-colname="<?php esc_attr_e( 'Last active', 'user-session-manager' ); ?>"><?php echo wp_kses( Display::time( $row['last_seen'] ), Display::ALLOWED ); ?></td>
+							<td data-colname="<?php esc_attr_e( 'Expires', 'user-session-manager' ); ?>"><?php echo wp_kses( Display::time( $row['expiration'] ), Display::ALLOWED ); ?></td>
 							<td class="usm-actions">
 								<?php if ( ! $row['current'] ) : ?>
 									<a class="button button-small" href="<?php echo esc_url( self::url( 'revoke', $row['handle'], $back ) ); ?>"><?php esc_html_e( 'Sign out', 'user-session-manager' ); ?></a>
@@ -165,13 +195,28 @@ final class ProfileSessions implements Service {
 			<p class="usm-bulk">
 				<?php if ( $own && count( $rows ) > 1 ) : ?>
 					<a class="button" href="<?php echo esc_url( self::url( 'sign_out_others', (string) $user->ID, $back ) ); ?>"><?php esc_html_e( 'Sign out all other sessions', 'user-session-manager' ); ?></a>
-				<?php elseif ( ! $own ) : ?>
-					<a class="button" href="<?php echo esc_url( self::url( 'sign_out', (string) $user->ID, $back ) ); ?>"><?php esc_html_e( 'Sign out everywhere', 'user-session-manager' ); ?></a>
+				<?php elseif ( ! $own && ! $confirm ) : ?>
+					<a class="button" href="<?php echo esc_url( add_query_arg( 'usm_confirm', 'sign_out', $back ) . '#' . self::ANCHOR ); ?>"><?php esc_html_e( 'Sign out everywhere', 'user-session-manager' ); ?></a>
 				<?php endif; ?>
 				<?php if ( ! $own && Access::can_view_all() ) : ?>
 					<a href="<?php echo esc_url( SessionsPage::url( array( 'user_id' => $user->ID ) ) ); ?>"><?php esc_html_e( 'All sessions', 'user-session-manager' ); ?></a>
 				<?php endif; ?>
 			</p>
+			<?php if ( ! $own && $confirm ) : ?>
+				<div class="usm-confirm usm-confirm-inline" role="group" aria-labelledby="usm-confirm-title">
+					<p id="usm-confirm-title"><strong>
+						<?php
+						/* translators: %s: user login. */
+						echo esc_html( sprintf( __( 'Sign out %s everywhere?', 'user-session-manager' ), $user->user_login ) );
+						?>
+					</strong></p>
+					<p><?php echo wp_kses_post( SessionsPage::confirm_message( array( $user->ID ), count( $rows ), false ) ); ?></p>
+					<p class="usm-confirm-actions">
+						<a class="button button-primary" href="<?php echo esc_url( self::url( 'sign_out', (string) $user->ID, $back ) ); ?>"><?php esc_html_e( 'Sign out everywhere', 'user-session-manager' ); ?></a>
+						<a class="button-link" href="<?php echo esc_url( $back . '#' . self::ANCHOR ); ?>"><?php esc_html_e( 'Cancel', 'user-session-manager' ); ?></a>
+					</p>
+				</div>
+			<?php endif; ?>
 		<?php endif; ?>
 		</div>
 		<?php
@@ -208,8 +253,9 @@ final class ProfileSessions implements Service {
 				break;
 
 			case 'sign_out':
-				$args['usm_message'] = 'signed_out';
+				$args['usm_message'] = 'signed_out_user';
 				$args['usm_count']   = $this->sessions->sign_out_everywhere( $user_id, 'profile' );
+				$args['usm_user']    = $user_id;
 				break;
 		}
 
@@ -228,9 +274,10 @@ final class ProfileSessions implements Service {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Display-only values set by our own redirect.
 		$message = isset( $_GET['usm_message'] ) ? sanitize_key( wp_unslash( $_GET['usm_message'] ) ) : '';
 		$count   = isset( $_GET['usm_count'] ) ? absint( $_GET['usm_count'] ) : 0;
+		$user    = isset( $_GET['usm_user'] ) ? get_userdata( absint( $_GET['usm_user'] ) ) : false;
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
-		$text = self::message( $message, $count );
+		$text = self::message( $message, $count, $user ? $user->user_login : '' );
 		if ( '' === $text ) {
 			return;
 		}
@@ -243,25 +290,47 @@ final class ProfileSessions implements Service {
 	 *
 	 * @param string $message Result code.
 	 * @param int    $count   Sessions affected.
+	 * @param string $user    Login of the user signed out, for signed_out_user.
 	 * @return string
 	 */
-	public static function message( string $message, int $count ): string {
+	public static function message( string $message, int $count, string $user = '' ): string {
+		$number = number_format_i18n( $count );
 		switch ( $message ) {
 			case 'revoked':
-				return __( 'Session signed out.', 'user-session-manager' );
+				$text = __( 'Session signed out.', 'user-session-manager' );
+				break;
 			case 'not_found':
-				return __( 'That session had already ended.', 'user-session-manager' );
+				$text = __( 'That session had already ended.', 'user-session-manager' );
+				break;
 			case 'signed_out_others':
-				/* translators: %d: number of sessions. */
-				return sprintf( _n( 'Signed out %d other session.', 'Signed out %d other sessions.', $count, 'user-session-manager' ), $count );
-			case 'signed_out':
-				/* translators: %d: number of sessions. */
-				return sprintf( _n( 'Signed out of %d session.', 'Signed out of %d sessions.', $count, 'user-session-manager' ), $count );
+				/* translators: %s: number of sessions. */
+				$text = sprintf( _n( 'Signed out %s other session.', 'Signed out %s other sessions.', $count, 'user-session-manager' ), $number );
+				break;
+			case 'signed_out_user':
+				$text = '' !== $user
+					/* translators: 1: user login, 2: number of sessions. */
+					? sprintf( _n( '%1$s was signed out of %2$s session.', '%1$s was signed out of %2$s sessions.', $count, 'user-session-manager' ), $user, $number )
+					/* translators: %s: number of sessions. */
+					: sprintf( _n( 'Signed out of %s session.', 'Signed out of %s sessions.', $count, 'user-session-manager' ), $number );
+				break;
 			case 'bulk':
-				/* translators: %d: number of sessions. */
-				return sprintf( _n( '%d session signed out.', '%d sessions signed out.', $count, 'user-session-manager' ), $count );
+				/* translators: %s: number of sessions. */
+				$text = sprintf( _n( '%s session signed out.', '%s sessions signed out.', $count, 'user-session-manager' ), $number );
+				break;
+			default:
+				return '';
 		}
 
-		return '';
+		/**
+		 * Filters the notice after sessions were signed out from a screen.
+		 *
+		 * @param string $text    Notice text.
+		 * @param string $message Result code: revoked, not_found, signed_out_others, signed_out_user or bulk.
+		 * @param int    $count   Sessions affected.
+		 * @param string $user    Login of the user signed out, for signed_out_user.
+		 */
+		$filtered = (string) apply_filters( 'user_session_manager_notice', $text, $message, $count, $user );
+
+		return '' !== trim( $filtered ) ? $filtered : $text;
 	}
 }

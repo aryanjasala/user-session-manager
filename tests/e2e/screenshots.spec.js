@@ -73,7 +73,7 @@ test.describe( 'Screenshots', () => {
 		await login.locator( '#user_login' ).fill( 'maria' );
 		await login.locator( '#user_pass' ).fill( 'demo-password-123' );
 		await login.locator( '#wp-submit' ).click();
-		await expect( login.locator( '#login_error' ) ).toContainText( 'You are already signed in on 2 devices' );
+		await expect( login.locator( '#login_error' ) ).toContainText( 'This account can be signed in on 2 devices at a time.' );
 		await shot( login, 4, { clip: { x: 390, y: 0, width: 500, height: 620 } } );
 		await other.close();
 	} );

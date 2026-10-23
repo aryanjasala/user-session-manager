@@ -103,26 +103,35 @@ final class Limits implements Service {
 		 */
 		do_action( 'user_session_manager_login_blocked', $user, $max, $active );
 
-		return new \WP_Error( 'user_session_manager_limit', $this->blocked_message( $user, $max ) );
+		return new \WP_Error( 'user_session_manager_limit', $this->blocked_message( $user, $max, $active ) );
 	}
 
 	/**
 	 * The message the login form shows when a login is refused.
 	 *
-	 * @param \WP_User $user User.
-	 * @param int      $max  Sessions allowed.
+	 * The limit and the real count are stated apart: a user can have more
+	 * sessions than the limit when the limit was lowered after they signed in.
+	 *
+	 * @param \WP_User $user   User.
+	 * @param int      $max    Sessions allowed.
+	 * @param int      $active Sessions the user has now.
 	 * @return string
 	 */
-	public function blocked_message( \WP_User $user, int $max ): string {
+	public function blocked_message( \WP_User $user, int $max, int $active = 0 ): string {
+		$active  = max( $max, $active );
 		$default = sprintf(
-			/* translators: %d: number of sessions allowed. */
-			_n(
-				'You are already signed in on %d device, the most this account allows. Sign out there first, or ask a site administrator to end that session.',
-				'You are already signed in on %d devices, the most this account allows. Sign out on one of them first, or ask a site administrator to end a session.',
-				$max,
-				'user-session-manager'
-			),
-			$max
+			/* translators: %s: number of devices allowed. */
+			_n( 'This account can be signed in on %s device at a time.', 'This account can be signed in on %s devices at a time.', $max, 'user-session-manager' ),
+			number_format_i18n( $max )
+		) . ' ' . sprintf(
+			/* translators: %s: number of sessions the account has now. */
+			_n( 'It already has %s active session.', 'It already has %s active sessions.', $active, 'user-session-manager' ),
+			number_format_i18n( $active )
+		) . ' ' . _n(
+			'Sign out there first, or ask a site administrator to end that session.',
+			'Sign out on another device first, or ask a site administrator to end a session.',
+			$active,
+			'user-session-manager'
 		);
 
 		/**
@@ -131,8 +140,9 @@ final class Limits implements Service {
 		 * @param string   $message Message. Basic HTML is allowed.
 		 * @param \WP_User $user    The user.
 		 * @param int      $max     Sessions allowed.
+		 * @param int      $active  Sessions the user has now.
 		 */
-		$message = (string) apply_filters( 'user_session_manager_blocked_login_message', $default, $user, $max );
+		$message = (string) apply_filters( 'user_session_manager_blocked_login_message', $default, $user, $max, $active );
 
 		return '' !== trim( $message ) ? wp_kses_post( $message ) : $default;
 	}
