@@ -2,16 +2,16 @@
 /**
  * Users > Sessions (Network Admin > Users > Sessions on multisite).
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Admin;
+namespace AryanX\Axle\UserSessionManager\Admin;
 
-use AryanX\UserSessionManager\Access;
-use AryanX\UserSessionManager\Service;
-use AryanX\UserSessionManager\Sessions;
-use const AryanX\UserSessionManager\PLUGIN_FILE;
-use const AryanX\UserSessionManager\VERSION;
+use AryanX\Axle\UserSessionManager\Access;
+use AryanX\Axle\UserSessionManager\Service;
+use AryanX\Axle\UserSessionManager\Sessions;
+use const AryanX\Axle\UserSessionManager\PLUGIN_FILE;
+use const AryanX\Axle\UserSessionManager\VERSION;
 
 defined( 'ABSPATH' ) || exit;
 

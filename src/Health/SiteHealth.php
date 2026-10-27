@@ -2,16 +2,16 @@
 /**
  * Site Health check.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Health;
+namespace AryanX\Axle\UserSessionManager\Health;
 
-use AryanX\UserSessionManager\Admin\SessionsPage;
-use AryanX\UserSessionManager\Admin\SettingsPage;
-use AryanX\UserSessionManager\Service;
-use AryanX\UserSessionManager\Sessions;
-use AryanX\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\Admin\SessionsPage;
+use AryanX\Axle\UserSessionManager\Admin\SettingsPage;
+use AryanX\Axle\UserSessionManager\Service;
+use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Settings;
 
 defined( 'ABSPATH' ) || exit;
 

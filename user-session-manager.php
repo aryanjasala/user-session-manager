@@ -12,17 +12,17 @@
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       user-session-manager
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager;
+namespace AryanX\Axle\UserSessionManager;
 
 defined( 'ABSPATH' ) || exit;
 
 const VERSION     = '1.0.0';
 const PLUGIN_FILE = __FILE__;
 
-// PSR-4: AryanX\UserSessionManager\Foo\Bar lives in src/Foo/Bar.php.
+// PSR-4: AryanX\Axle\UserSessionManager\Foo\Bar lives in src/Foo/Bar.php.
 spl_autoload_register(
 	static function ( $class_name ) {
 		$prefix = __NAMESPACE__ . '\\';

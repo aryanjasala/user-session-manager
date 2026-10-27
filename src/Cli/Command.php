@@ -2,15 +2,15 @@
 /**
  * `wp user-session-manager` commands.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Cli;
+namespace AryanX\Axle\UserSessionManager\Cli;
 
-use AryanX\UserSessionManager\Abilities;
-use AryanX\UserSessionManager\Pruner;
-use AryanX\UserSessionManager\Sessions;
-use AryanX\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\Abilities;
+use AryanX\Axle\UserSessionManager\Pruner;
+use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Settings;
 
 defined( 'ABSPATH' ) || exit;
 

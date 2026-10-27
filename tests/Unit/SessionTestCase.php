@@ -2,13 +2,13 @@
 /**
  * Base class for tests that work on users and their sessions.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Tests\Unit;
+namespace AryanX\Axle\UserSessionManager\Tests\Unit;
 
-use AryanX\UserSessionManager\Sessions;
-use AryanX\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Settings;
 use Brain\Monkey\Functions;
 
 require_once dirname( __DIR__ ) . '/Stubs/sessions.php';

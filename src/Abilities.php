@@ -2,10 +2,10 @@
 /**
  * Abilities: sessions for AI agents and other Abilities API clients.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager;
+namespace AryanX\Axle\UserSessionManager;
 
 defined( 'ABSPATH' ) || exit;
 

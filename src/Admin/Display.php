@@ -2,10 +2,10 @@
 /**
  * Small formatting helpers for the screens.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Admin;
+namespace AryanX\Axle\UserSessionManager\Admin;
 
 defined( 'ABSPATH' ) || exit;
 

@@ -2,10 +2,10 @@
 /**
  * Personal data export, erase and the privacy policy text.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager;
+namespace AryanX\Axle\UserSessionManager;
 
 defined( 'ABSPATH' ) || exit;
 

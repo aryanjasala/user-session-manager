@@ -2,10 +2,10 @@
 /**
  * The hourly clean-up.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager;
+namespace AryanX\Axle\UserSessionManager;
 
 defined( 'ABSPATH' ) || exit;
 

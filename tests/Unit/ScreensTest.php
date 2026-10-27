@@ -3,16 +3,16 @@
  * Tests for the wording and choices on the screens: sign out notices, the
  * question before a sign out everywhere, core's sessions row and Site Health.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Tests\Unit;
+namespace AryanX\Axle\UserSessionManager\Tests\Unit;
 
-use AryanX\UserSessionManager\Admin\ProfileSessions;
-use AryanX\UserSessionManager\Admin\SessionsPage;
-use AryanX\UserSessionManager\Health\SiteHealth;
-use AryanX\UserSessionManager\Sessions;
-use AryanX\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\Admin\ProfileSessions;
+use AryanX\Axle\UserSessionManager\Admin\SessionsPage;
+use AryanX\Axle\UserSessionManager\Health\SiteHealth;
+use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Settings;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 

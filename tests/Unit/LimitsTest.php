@@ -2,14 +2,14 @@
 /**
  * Tests for session limits and lifetimes at login.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Tests\Unit;
+namespace AryanX\Axle\UserSessionManager\Tests\Unit;
 
-use AryanX\UserSessionManager\Limits;
-use AryanX\UserSessionManager\Sessions;
-use AryanX\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\Limits;
+use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Settings;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;

@@ -2,17 +2,17 @@
 /**
  * Tests for the hourly clean-up, the abilities and the Users column.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Tests\Unit;
+namespace AryanX\Axle\UserSessionManager\Tests\Unit;
 
-use AryanX\UserSessionManager\Abilities;
-use AryanX\UserSessionManager\Admin\SessionsPage;
-use AryanX\UserSessionManager\Admin\UsersColumn;
-use AryanX\UserSessionManager\Pruner;
-use AryanX\UserSessionManager\Sessions;
-use AryanX\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\Abilities;
+use AryanX\Axle\UserSessionManager\Admin\SessionsPage;
+use AryanX\Axle\UserSessionManager\Admin\UsersColumn;
+use AryanX\Axle\UserSessionManager\Pruner;
+use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Settings;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;

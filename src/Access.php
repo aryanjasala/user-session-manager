@@ -2,10 +2,10 @@
 /**
  * Who may see and end whose sessions.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager;
+namespace AryanX\Axle\UserSessionManager;
 
 defined( 'ABSPATH' ) || exit;
 
