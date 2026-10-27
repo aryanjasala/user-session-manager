@@ -2,14 +2,14 @@
 /**
  * The Sessions column on the Users list.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Admin;
+namespace AryanX\Axle\UserSessionManager\Admin;
 
-use AryanX\UserSessionManager\Access;
-use AryanX\UserSessionManager\Service;
-use AryanX\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Access;
+use AryanX\Axle\UserSessionManager\Service;
+use AryanX\Axle\UserSessionManager\Sessions;
 
 defined( 'ABSPATH' ) || exit;
 

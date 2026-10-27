@@ -2,14 +2,14 @@
 /**
  * Tests for "last active" tracking and the idle timeout.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Tests\Unit;
+namespace AryanX\Axle\UserSessionManager\Tests\Unit;
 
-use AryanX\UserSessionManager\Activity;
-use AryanX\UserSessionManager\Sessions;
-use AryanX\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\Activity;
+use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Settings;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;

@@ -2,13 +2,13 @@
 /**
  * The list table on Users > Sessions.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Admin;
+namespace AryanX\Axle\UserSessionManager\Admin;
 
-use AryanX\UserSessionManager\Access;
-use AryanX\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\Access;
+use AryanX\Axle\UserSessionManager\Sessions;
 
 defined( 'ABSPATH' ) || exit;
 

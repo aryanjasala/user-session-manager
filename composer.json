@@ -25,12 +25,12 @@
   },
   "autoload": {
     "psr-4": {
-      "AryanX\\UserSessionManager\\": "src/"
+      "AryanX\\Axle\\UserSessionManager\\": "src/"
     }
   },
   "autoload-dev": {
     "psr-4": {
-      "AryanX\\UserSessionManager\\Tests\\": "tests/"
+      "AryanX\\Axle\\UserSessionManager\\Tests\\": "tests/"
     }
   },
   "config": {

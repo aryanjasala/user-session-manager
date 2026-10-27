@@ -2,13 +2,13 @@
 /**
  * Tests for settings and the per-user policy.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Tests\Unit;
+namespace AryanX\Axle\UserSessionManager\Tests\Unit;
 
-use AryanX\UserSessionManager\Access;
-use AryanX\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\Access;
+use AryanX\Axle\UserSessionManager\Settings;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;

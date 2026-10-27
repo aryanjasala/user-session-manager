@@ -2,12 +2,12 @@
 /**
  * Tests for the user agent parser.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager\Tests\Unit;
+namespace AryanX\Axle\UserSessionManager\Tests\Unit;
 
-use AryanX\UserSessionManager\UserAgent;
+use AryanX\Axle\UserSessionManager\UserAgent;
 use Brain\Monkey\Filters;
 
 final class UserAgentTest extends TestCase {

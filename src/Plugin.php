@@ -2,17 +2,17 @@
 /**
  * Plugin bootstrap.
  *
- * @package AryanX\UserSessionManager
+ * @package AryanX\Axle\UserSessionManager
  */
 
-namespace AryanX\UserSessionManager;
+namespace AryanX\Axle\UserSessionManager;
 
-use AryanX\UserSessionManager\Admin\ProfileSessions;
-use AryanX\UserSessionManager\Admin\SessionsPage;
-use AryanX\UserSessionManager\Admin\SettingsPage;
-use AryanX\UserSessionManager\Admin\UsersColumn;
-use AryanX\UserSessionManager\Cli\Command;
-use AryanX\UserSessionManager\Health\SiteHealth;
+use AryanX\Axle\UserSessionManager\Admin\ProfileSessions;
+use AryanX\Axle\UserSessionManager\Admin\SessionsPage;
+use AryanX\Axle\UserSessionManager\Admin\SettingsPage;
+use AryanX\Axle\UserSessionManager\Admin\UsersColumn;
+use AryanX\Axle\UserSessionManager\Cli\Command;
+use AryanX\Axle\UserSessionManager\Health\SiteHealth;
 
 defined( 'ABSPATH' ) || exit;
 
