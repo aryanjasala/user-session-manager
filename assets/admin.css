@@ -133,6 +133,31 @@
 	gap: 10px;
 }
 
+/* Shared login detection: the badge and the evidence. */
+.usm-badge-shared {
+	background: #7a4f00;
+}
+
+.usm-shared.notice {
+	max-width: 1100px;
+	margin: 12px 0;
+}
+
+.usm-shared-evidence {
+	margin: 0.5em 0 0.5em 1.5em;
+	list-style: disc;
+}
+
+.usm-shared-sessions {
+	margin: 4px 0 6px 1.5em;
+	list-style: circle;
+}
+
+.usm-shared-help {
+	max-width: 1000px;
+	margin-top: 10px;
+}
+
 /* Small screens: one card per session and per role, labels beside the values. */
 @media screen and (max-width: 782px) {
 	.usm-sessions thead,

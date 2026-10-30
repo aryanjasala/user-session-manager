@@ -13,6 +13,7 @@ use AryanX\Axle\UserSessionManager\Admin\UsersColumn;
 use AryanX\Axle\UserSessionManager\Pruner;
 use AryanX\Axle\UserSessionManager\Sessions;
 use AryanX\Axle\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\SharedLogins;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
@@ -76,15 +77,18 @@ final class PrunerTest extends SessionTestCase {
 			}
 		);
 
-		( new Abilities( new Sessions( new Settings() ) ) )->register_abilities();
+		$settings = new Settings();
+		$sessions = new Sessions( $settings );
+		( new Abilities( $sessions, new SharedLogins( $settings, $sessions ) ) )->register_abilities();
 
-		$this->assertSame( array( 'user-session-manager/list-sessions', 'user-session-manager/revoke-session', 'user-session-manager/sign-out-user' ), array_keys( $registered ) );
+		$this->assertSame( array( 'user-session-manager/list-sessions', 'user-session-manager/revoke-session', 'user-session-manager/sign-out-user', 'user-session-manager/list-shared-logins' ), array_keys( $registered ) );
 		foreach ( $registered as $args ) {
 			$this->assertTrue( $args['meta']['public'] );
 			$this->assertTrue( $args['meta']['mcp']['public'] );
 			$this->assertTrue( $args['meta']['show_in_rest'] );
 		}
 		$this->assertTrue( $registered['user-session-manager/list-sessions']['meta']['annotations']['readonly'] );
+		$this->assertTrue( $registered['user-session-manager/list-shared-logins']['meta']['annotations']['readonly'] );
 		$this->assertSame(
 			array(
 				'readonly'    => false,
@@ -101,7 +105,9 @@ final class PrunerTest extends SessionTestCase {
 		$this->current_user = 7;
 		Functions\when( 'current_user_can' )->justReturn( false );
 		Functions\when( 'is_email' )->justReturn( false );
-		$abilities = new Abilities( new Sessions( new Settings() ) );
+		$settings  = new Settings();
+		$sessions  = new Sessions( $settings );
+		$abilities = new Abilities( $sessions, new SharedLogins( $settings, $sessions ) );
 
 		$this->assertTrue( $abilities->can_list() );
 		$this->assertTrue( $abilities->can_list( array( 'user' => 'alice' ) ) );
@@ -111,6 +117,10 @@ final class PrunerTest extends SessionTestCase {
 		$this->assertFalse( $abilities->can_revoke( array( 'handle' => '2-0123456789abcdef01234567' ) ) );
 		$this->assertFalse( $abilities->can_sign_out( array( 'user' => 2 ) ) );
 		$this->assertTrue( $abilities->can_sign_out( array( 'user' => '7' ) ) );
+
+		$this->assertTrue( $abilities->can_list_shared( array( 'user' => 'alice' ) ) );
+		$this->assertFalse( $abilities->can_list_shared( array( 'user' => 'bob' ) ) );
+		$this->assertFalse( $abilities->can_list_shared() );
 
 		$this->assertInstanceOf( \WP_Error::class, $abilities->sign_out_user( array( 'user' => 'ghost' ) ) );
 	}
@@ -145,8 +155,9 @@ final class PrunerTest extends SessionTestCase {
 				return 'edit_user' !== $cap || 9 !== ( $args[0] ?? 0 );
 			}
 		);
-		$sessions = new Sessions( new Settings() );
-		$page     = new SessionsPage( $sessions );
+		$settings = new Settings();
+		$sessions = new Sessions( $settings );
+		$page     = new SessionsPage( $sessions, new SharedLogins( $settings, $sessions ) );
 		$a        = $sessions->handle( 7, $this->session( 7, 'a' ) );
 		$b        = $sessions->handle( 7, $this->session( 7, 'b' ) );
 		$boss     = $sessions->handle( 9, $this->session( 9, 'boss' ) );

@@ -13,6 +13,7 @@ use AryanX\Axle\UserSessionManager\Admin\SessionsPage;
 use AryanX\Axle\UserSessionManager\Health\SiteHealth;
 use AryanX\Axle\UserSessionManager\Sessions;
 use AryanX\Axle\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\SharedLogins;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 
@@ -65,7 +66,9 @@ final class ScreensTest extends SessionTestCase {
 	public function test_core_sessions_row_is_hidden_only_where_the_table_shows(): void {
 		$this->current_user = 1;
 		$this->user( 1, 'admin', array( 'administrator' ) );
-		$profile = new ProfileSessions( new Sessions( new Settings() ) );
+		$settings = new Settings();
+		$sessions = new Sessions( $settings );
+		$profile  = new ProfileSessions( $sessions, new SharedLogins( $settings, $sessions ) );
 
 		Filters\expectApplied( 'user_session_manager_hide_core_sessions' )->once()->with( true, 1 )->andReturn( true );
 		$this->assertTrue( $profile->hides_core_row( 1 ) );

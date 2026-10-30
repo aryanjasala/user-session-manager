@@ -9,6 +9,7 @@ namespace AryanX\Axle\UserSessionManager\Admin;
 
 use AryanX\Axle\UserSessionManager\Access;
 use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\SharedLogins;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -45,12 +46,35 @@ final class SessionsTable extends \WP_List_Table {
 	public bool $truncated = false;
 
 	/**
+	 * Whether only accounts that look shared are listed.
+	 *
+	 * @var bool
+	 */
+	public bool $shared_view = false;
+
+	/**
+	 * Shared login detection.
+	 *
+	 * @var SharedLogins
+	 */
+	private SharedLogins $shared;
+
+	/**
+	 * Flagged accounts, user ID => flag, read once per request.
+	 *
+	 * @var array<int, array>|null
+	 */
+	private ?array $flagged = null;
+
+	/**
 	 * Sets up the table.
 	 *
-	 * @param Sessions $sessions Session store.
+	 * @param Sessions     $sessions Session store.
+	 * @param SharedLogins $shared   Shared login detection.
 	 */
-	public function __construct( Sessions $sessions ) {
+	public function __construct( Sessions $sessions, SharedLogins $shared ) {
 		$this->sessions = $sessions;
+		$this->shared   = $shared;
 
 		parent::__construct(
 			array(
@@ -80,7 +104,7 @@ final class SessionsTable extends \WP_List_Table {
 	 */
 	public function prepare_items(): void {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only list arguments.
-		$args = array(
+		$args              = array(
 			'search'   => isset( $_REQUEST['s'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['s'] ) ) : '',
 			'role'     => isset( $_REQUEST['role'] ) && ! is_network_admin() ? sanitize_key( wp_unslash( $_REQUEST['role'] ) ) : '',
 			'user_id'  => isset( $_REQUEST['user_id'] ) ? absint( $_REQUEST['user_id'] ) : 0,
@@ -89,7 +113,11 @@ final class SessionsTable extends \WP_List_Table {
 			'paged'    => $this->get_pagenum(),
 			'per_page' => self::per_page(),
 		);
+		$this->shared_view = ! empty( $_REQUEST['shared'] );
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+		if ( $this->shared_view ) {
+			$args['user_ids'] = array_keys( $this->flagged() );
+		}
 
 		$found           = $this->sessions->query( $args );
 		$this->items     = $found['rows'];
@@ -133,6 +161,47 @@ final class SessionsTable extends \WP_List_Table {
 			'login'      => array( 'login', true ),
 			'last_seen'  => array( 'last_seen', true ),
 			'expiration' => array( 'expiration', true ),
+		);
+	}
+
+	/**
+	 * Accounts that look shared.
+	 *
+	 * @return array<int, array>
+	 */
+	private function flagged(): array {
+		if ( null === $this->flagged ) {
+			$this->flagged = $this->shared->flagged();
+		}
+
+		return $this->flagged;
+	}
+
+	/**
+	 * "All sessions" and "Possibly shared", once any account looks shared.
+	 *
+	 * @return array<string, string>
+	 */
+	protected function get_views() {
+		$count = count( $this->flagged() );
+		if ( ! $count && ! $this->shared_view ) {
+			return array();
+		}
+
+		return array(
+			'all'    => sprintf(
+				'<a href="%1$s"%2$s>%3$s</a>',
+				esc_url( SessionsPage::url() ),
+				$this->shared_view ? '' : ' class="current" aria-current="page"',
+				esc_html__( 'All sessions', 'user-session-manager' )
+			),
+			'shared' => sprintf(
+				'<a href="%1$s"%2$s>%3$s <span class="count">(%4$s)</span></a>',
+				esc_url( SessionsPage::url( array( 'shared' => 1 ) ) ),
+				$this->shared_view ? ' class="current" aria-current="page"' : '',
+				esc_html__( 'Possibly shared', 'user-session-manager' ),
+				esc_html( number_format_i18n( $count ) )
+			),
 		);
 	}
 
@@ -263,7 +332,7 @@ final class SessionsTable extends \WP_List_Table {
 	 * @return string
 	 */
 	protected function column_device( $item ): string {
-		return wp_kses( Display::device( $item ), Display::ALLOWED );
+		return wp_kses( Display::device( $item, in_array( $item['handle'], $this->shared->handles( (int) $item['user_id'] ), true ) ), Display::ALLOWED );
 	}
 
 	/**

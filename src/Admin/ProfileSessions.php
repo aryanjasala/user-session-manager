@@ -10,6 +10,7 @@ namespace AryanX\Axle\UserSessionManager\Admin;
 use AryanX\Axle\UserSessionManager\Access;
 use AryanX\Axle\UserSessionManager\Service;
 use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\SharedLogins;
 use const AryanX\Axle\UserSessionManager\PLUGIN_FILE;
 use const AryanX\Axle\UserSessionManager\VERSION;
 
@@ -34,12 +35,21 @@ final class ProfileSessions implements Service {
 	private Sessions $sessions;
 
 	/**
+	 * Shared login detection.
+	 *
+	 * @var SharedLogins
+	 */
+	private SharedLogins $shared;
+
+	/**
 	 * Sets up the section.
 	 *
-	 * @param Sessions $sessions Session store.
+	 * @param Sessions     $sessions Session store.
+	 * @param SharedLogins $shared   Shared login detection.
 	 */
-	public function __construct( Sessions $sessions ) {
+	public function __construct( Sessions $sessions, SharedLogins $shared ) {
 		$this->sessions = $sessions;
+		$this->shared   = $shared;
 	}
 
 	/**
@@ -139,9 +149,11 @@ final class ProfileSessions implements Service {
 			return;
 		}
 
-		$own  = get_current_user_id() === $user->ID;
-		$rows = $this->sessions->list_for_user( $user->ID );
-		$back = $own ? self_admin_url( 'profile.php' ) : add_query_arg( 'user_id', $user->ID, self_admin_url( 'user-edit.php' ) );
+		$own    = get_current_user_id() === $user->ID;
+		$rows   = $this->sessions->list_for_user( $user->ID );
+		$flag   = $this->shared->get( $user->ID );
+		$shared = $this->shared->handles( $user->ID );
+		$back   = $own ? self_admin_url( 'profile.php' ) : add_query_arg( 'user_id', $user->ID, self_admin_url( 'user-edit.php' ) );
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only shows the question; the sign out itself has a nonce.
 		$confirm = isset( $_GET['usm_confirm'] ) && 'sign_out' === sanitize_key( wp_unslash( $_GET['usm_confirm'] ) );
 		?>
@@ -161,6 +173,9 @@ final class ProfileSessions implements Service {
 				: esc_html__( 'Every browser signed in to this account. Signing one out logs it out the next time it loads a page.', 'user-session-manager' );
 			?>
 		</p>
+		<?php if ( $flag ) : ?>
+			<?php echo wp_kses( Display::shared_evidence( $flag ), Display::ALLOWED ); ?>
+		<?php endif; ?>
 		<?php if ( ! $rows ) : ?>
 			<p class="usm-empty"><?php esc_html_e( 'No active sessions.', 'user-session-manager' ); ?></p>
 		<?php else : ?>
@@ -178,7 +193,7 @@ final class ProfileSessions implements Service {
 				<tbody>
 					<?php foreach ( $rows as $row ) : ?>
 						<tr class="usm-session<?php echo $row['current'] ? ' is-current' : ''; ?>" data-handle="<?php echo esc_attr( $row['handle'] ); ?>">
-							<td class="usm-device-cell"><?php echo wp_kses( Display::device( $row ), Display::ALLOWED ); ?></td>
+							<td class="usm-device-cell"><?php echo wp_kses( Display::device( $row, in_array( $row['handle'], $shared, true ) ), Display::ALLOWED ); ?></td>
 							<td class="usm-ip" data-colname="<?php esc_attr_e( 'IP address', 'user-session-manager' ); ?>"><?php echo esc_html( '' !== $row['ip'] ? $row['ip'] : __( 'Unknown', 'user-session-manager' ) ); ?></td>
 							<td data-colname="<?php esc_attr_e( 'Signed in', 'user-session-manager' ); ?>"><?php echo wp_kses( Display::time( $row['login'] ), Display::ALLOWED ); ?></td>
 							<td data-colname="<?php esc_attr_e( 'Last active', 'user-session-manager' ); ?>"><?php echo wp_kses( Display::time( $row['last_seen'] ), Display::ALLOWED ); ?></td>

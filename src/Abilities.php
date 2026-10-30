@@ -29,12 +29,21 @@ final class Abilities implements Service {
 	private Sessions $sessions;
 
 	/**
+	 * Shared login detection.
+	 *
+	 * @var SharedLogins
+	 */
+	private SharedLogins $shared;
+
+	/**
 	 * Sets up the abilities.
 	 *
-	 * @param Sessions $sessions Session store.
+	 * @param Sessions     $sessions Session store.
+	 * @param SharedLogins $shared   Shared login detection.
 	 */
-	public function __construct( Sessions $sessions ) {
+	public function __construct( Sessions $sessions, SharedLogins $shared ) {
 		$this->sessions = $sessions;
+		$this->shared   = $shared;
 	}
 
 	/**
@@ -61,7 +70,7 @@ final class Abilities implements Service {
 			self::CATEGORY,
 			array(
 				'label'       => __( 'User Session Manager', 'user-session-manager' ),
-				'description' => __( 'Where users are signed in, and signing out one device or all of them.', 'user-session-manager' ),
+				'description' => __( 'Where users are signed in, which accounts look shared, and signing out one device or all of them.', 'user-session-manager' ),
 			)
 		);
 	}
@@ -203,6 +212,163 @@ final class Abilities implements Service {
 				'destructive' => true,
 				'idempotent'  => true,
 			)
+		);
+
+		$this->ability(
+			'list-shared-logins',
+			__( 'List accounts that look shared', 'user-session-manager' ),
+			__( 'Accounts whose sessions look like more than one person, such as two computers on different networks at the same time, with the reasons and the sessions behind them. Without input, every flagged account, which needs permission to manage users. With user, only that user, which also works for your own account. A guess, not proof.', 'user-session-manager' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'user'  => $user_field,
+					'limit' => array(
+						'type'    => 'integer',
+						'minimum' => 1,
+						'maximum' => 100,
+						'default' => self::LIMIT,
+					),
+				),
+				'additionalProperties' => false,
+				'default'              => array(),
+			),
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'total'    => array( 'type' => 'integer' ),
+					'accounts' => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'       => 'object',
+							'properties' => array(
+								'user_id'       => array( 'type' => 'integer' ),
+								'user_login'    => array( 'type' => 'string' ),
+								'first_noticed' => array( 'type' => 'string' ),
+								'last_seen'     => array( 'type' => 'string' ),
+								'action'        => array(
+									'type'        => 'string',
+									'enum'        => SharedLogins::ACTIONS,
+									'description' => 'What was done: flag only, notify (emails sent) or sign_out_others.',
+								),
+								'signed_out'    => array( 'type' => 'integer' ),
+								'evidence'      => array(
+									'type'  => 'array',
+									'items' => array(
+										'type'       => 'object',
+										'properties' => array(
+											'type'    => array(
+												'type' => 'string',
+												'enum' => array( 'networks', 'countries', 'same_type', 'devices' ),
+											),
+											'summary' => array( 'type' => 'string' ),
+											'handles' => array(
+												'type'  => 'array',
+												'items' => array( 'type' => 'string' ),
+											),
+										),
+									),
+								),
+								'sessions'      => array(
+									'type'  => 'array',
+									'items' => array(
+										'type'       => 'object',
+										'properties' => array(
+											'handle'      => array(
+												'type' => 'string',
+												'description' => 'Pass this to revoke-session while the session is active.',
+											),
+											'device'      => array( 'type' => 'string' ),
+											'device_type' => array( 'type' => 'string' ),
+											'ip'          => array( 'type' => 'string' ),
+											'country'     => array( 'type' => 'string' ),
+											'signed_in'   => array( 'type' => 'string' ),
+											'last_active' => array( 'type' => 'string' ),
+										),
+									),
+								),
+							),
+						),
+					),
+				),
+			),
+			array( $this, 'list_shared_logins' ),
+			array( $this, 'can_list_shared' ),
+			array(
+				'readonly'   => true,
+				'idempotent' => true,
+			)
+		);
+	}
+
+	/**
+	 * Permission: every flagged account with the capability, or one user the caller may manage.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return bool
+	 */
+	public function can_list_shared( $input = null ): bool {
+		$input = (array) $input;
+
+		return isset( $input['user'] ) ? Access::can_manage( self::user_id( $input['user'] ) ) : Access::can_view_all();
+	}
+
+	/**
+	 * Ability: accounts that look shared.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return array
+	 */
+	public function list_shared_logins( $input = null ): array {
+		$input = (array) $input;
+		$limit = max( 1, min( 100, (int) ( $input['limit'] ?? self::LIMIT ) ) );
+		if ( isset( $input['user'] ) ) {
+			$user_id = self::user_id( $input['user'] );
+			$flag    = $this->shared->get( $user_id );
+			$flags   = $flag ? array( $user_id => $flag ) : array();
+		} else {
+			$flags = $this->shared->flagged();
+		}
+
+		$accounts = array();
+		foreach ( array_slice( $flags, 0, $limit, true ) as $user_id => $flag ) {
+			$user     = get_userdata( (int) $user_id );
+			$sessions = array();
+			foreach ( $flag['sessions'] as $handle => $session ) {
+				$sessions[] = array(
+					'handle'      => (string) $handle,
+					'device'      => (string) ( $session['device'] ?? '' ),
+					'device_type' => (string) ( $session['device_type'] ?? '' ),
+					'ip'          => (string) ( $session['ip'] ?? '' ),
+					'country'     => (string) ( $session['country'] ?? '' ),
+					'signed_in'   => ! empty( $session['login'] ) ? gmdate( 'c', (int) $session['login'] ) : '',
+					'last_active' => ! empty( $session['last_seen'] ) ? gmdate( 'c', (int) $session['last_seen'] ) : '',
+				);
+			}
+
+			$accounts[] = array(
+				'user_id'       => (int) $user_id,
+				'user_login'    => $user ? (string) $user->user_login : '',
+				'first_noticed' => gmdate( 'c', $flag['detected'] ),
+				'last_seen'     => gmdate( 'c', $flag['updated'] ),
+				'action'        => $flag['action'],
+				'signed_out'    => $flag['signed_out'],
+				'evidence'      => array_map(
+					static function ( array $evidence ): array {
+						return array(
+							'type'    => (string) ( $evidence['type'] ?? '' ),
+							'summary' => SharedLogins::evidence_text( $evidence ),
+							'handles' => array_values( array_map( 'strval', (array) ( $evidence['handles'] ?? array() ) ) ),
+						);
+					},
+					$flag['evidence']
+				),
+				'sessions'      => $sessions,
+			);
+		}
+
+		return array(
+			'total'    => count( $flags ),
+			'accounts' => $accounts,
 		);
 	}
 

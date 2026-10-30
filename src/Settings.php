@@ -23,6 +23,12 @@ final class Settings {
 	public const LIMIT_MODES = array( 'evict_oldest', 'block' );
 
 	/**
+	 * What happens when an account looks shared, from least to most strict.
+	 * `off` only exists in the settings: it makes the role exempt.
+	 */
+	public const SHARED_MODES = array( 'off', 'flag', 'notify', 'sign_out_others' );
+
+	/**
 	 * Per-role values: 0 means no limit, or the WordPress default for lifetimes.
 	 */
 	public const POLICY_DEFAULTS = array(
@@ -44,6 +50,7 @@ final class Settings {
 
 	private const DEFAULTS = array(
 		'policies'         => array(),
+		'shared'           => array(),
 		'limit_mode'       => 'evict_oldest',
 		'new_device_email' => false,
 		'device_days'      => 30,
@@ -55,7 +62,7 @@ final class Settings {
 	/**
 	 * All settings, with defaults filled in.
 	 *
-	 * @return array{policies: array<string, array<string, int>>, limit_mode: string, new_device_email: bool, device_days: int, mask_ip: bool}
+	 * @return array{policies: array<string, array<string, int>>, shared: array<string, string>, limit_mode: string, new_device_email: bool, device_days: int, mask_ip: bool}
 	 */
 	public function all(): array {
 		$saved = get_site_option( self::OPTION, array() );
@@ -66,8 +73,16 @@ final class Settings {
 			$policies[ sanitize_key( (string) $role ) ] = self::sanitize_policy( (array) $policy );
 		}
 
+		$shared = array();
+		foreach ( (array) $all['shared'] as $role => $mode ) {
+			if ( in_array( $mode, self::SHARED_MODES, true ) ) {
+				$shared[ sanitize_key( (string) $role ) ] = (string) $mode;
+			}
+		}
+
 		return array(
 			'policies'         => $policies,
+			'shared'           => $shared,
 			'limit_mode'       => in_array( $all['limit_mode'], self::LIMIT_MODES, true ) ? (string) $all['limit_mode'] : 'evict_oldest',
 			'new_device_email' => (bool) $all['new_device_email'],
 			'device_days'      => max( 1, min( 365, (int) $all['device_days'] ) ),
@@ -123,6 +138,34 @@ final class Settings {
 	 */
 	public function policy( string $role ): array {
 		return $this->all()['policies'][ $role ] ?? self::POLICY_DEFAULTS;
+	}
+
+	/**
+	 * What happens when an account with a role looks shared. Default flag.
+	 *
+	 * @param string $role Role name.
+	 * @return string off, flag, notify or sign_out_others.
+	 */
+	public function shared_mode( string $role ): string {
+		return $this->all()['shared'][ $role ] ?? 'flag';
+	}
+
+	/**
+	 * What happens when a user's account looks shared, from their roles.
+	 *
+	 * The most generous role wins, the same as the other policies: a role set to
+	 * off makes the user exempt. Users with no role on the site are flagged.
+	 *
+	 * @param \WP_User $user User.
+	 * @return string off, flag, notify or sign_out_others.
+	 */
+	public function shared_mode_for( \WP_User $user ): string {
+		$rank = count( self::SHARED_MODES );
+		foreach ( (array) $user->roles as $role ) {
+			$rank = min( $rank, (int) array_search( $this->shared_mode( (string) $role ), self::SHARED_MODES, true ) );
+		}
+
+		return self::SHARED_MODES[ $rank ] ?? 'flag';
 	}
 
 	/**

@@ -95,4 +95,18 @@ function clearSessions( keepOwn = false ) {
 	` );
 }
 
-module.exports = { UA, createPeople, removePeople, addSessions, clearSessions };
+/**
+ * Gives a user two computers on two networks, used a minute apart, and runs
+ * shared login detection so the account is flagged.
+ *
+ * @param {string} login User login.
+ */
+function markShared( login ) {
+	addSessions( [
+		[ login, 'windows', '192.0.2.18', 90, 1 ],
+		[ login, 'mac', '198.51.100.40', 20, 0 ],
+	] );
+	wpEval( `\\AryanX\\Axle\\UserSessionManager\\Plugin::instance()->shared()->check( get_user_by( 'login', '${ login }' ) );` );
+}
+
+module.exports = { UA, createPeople, removePeople, addSessions, clearSessions, markShared };

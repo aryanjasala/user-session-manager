@@ -1,6 +1,6 @@
 <?php
 /**
- * Removes User Session Manager's settings, device memory and schedule, on every site.
+ * Removes User Session Manager's settings, device memory, shared login flags and schedule, on every site.
  *
  * The `last_seen` time the plugin adds inside core's `session_tokens` user meta
  * is left alone: core ignores it, and it goes away with each session.
@@ -46,5 +46,6 @@ if ( is_multisite() ) {
 	user_session_manager_uninstall_site();
 }
 
-// The device memory for the new device email is user meta, shared across a network.
+// The device memory for the new device email and the shared login flags are user meta, shared across a network.
 delete_metadata( 'user', 0, 'user_session_manager_devices', '', true );
+delete_metadata( 'user', 0, 'user_session_manager_shared', '', true );

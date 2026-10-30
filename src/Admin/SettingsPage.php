@@ -139,6 +139,7 @@ final class SettingsPage implements Service {
 							<th scope="col"><?php esc_html_e( 'Sign out after idle (minutes)', 'user-session-manager' ); ?></th>
 							<th scope="col"><?php esc_html_e( 'Session length (hours)', 'user-session-manager' ); ?></th>
 							<th scope="col"><?php esc_html_e( 'With "Remember Me" (hours)', 'user-session-manager' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Account looks shared', 'user-session-manager' ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -152,10 +153,21 @@ final class SettingsPage implements Service {
 										<input type="number" class="small-text" min="0" max="<?php echo esc_attr( (string) Settings::POLICY_MAX[ $key ] ); ?>" step="1" id="<?php echo esc_attr( "usm-{$role}-{$key}" ); ?>" name="<?php echo esc_attr( "policies[{$role}][{$key}]" ); ?>" value="<?php echo esc_attr( (string) $policy[ $key ] ); ?>">
 									</td>
 								<?php endforeach; ?>
+								<td data-colname="<?php esc_attr_e( 'Account looks shared', 'user-session-manager' ); ?>">
+									<label class="screen-reader-text" for="<?php echo esc_attr( "usm-{$role}-shared" ); ?>"><?php echo esc_html( translate_user_role( $name ) . ': ' . __( 'Account looks shared', 'user-session-manager' ) ); ?></label>
+									<select id="<?php echo esc_attr( "usm-{$role}-shared" ); ?>" name="<?php echo esc_attr( "shared[{$role}]" ); ?>">
+										<?php foreach ( $this->shared_labels() as $mode => $label ) : ?>
+											<option value="<?php echo esc_attr( $mode ); ?>" <?php selected( $this->settings->shared_mode( (string) $role ), $mode ); ?>><?php echo esc_html( $label ); ?></option>
+										<?php endforeach; ?>
+									</select>
+								</td>
 							</tr>
 						<?php endforeach; ?>
 					</tbody>
 				</table>
+				<p class="description usm-shared-help">
+					<?php esc_html_e( '"Account looks shared" decides what happens when the sessions of an account look like more than one person: more than two networks at the same time, two computers or two phones on different networks at the same time, or more than four devices in a day. The account always gets a "Possibly shared" badge with the reasons. A login is never refused on this guess. Choose "Do not check" for accounts that are meant to be shared, such as a kiosk.', 'user-session-manager' ); ?>
+				</p>
 
 				<table class="form-table" role="presentation">
 					<tr>
@@ -213,6 +225,20 @@ final class SettingsPage implements Service {
 	}
 
 	/**
+	 * The choices for an account that looks shared.
+	 *
+	 * @return array<string, string>
+	 */
+	private function shared_labels(): array {
+		return array(
+			'off'             => __( 'Do not check', 'user-session-manager' ),
+			'flag'            => __( 'Show a badge', 'user-session-manager' ),
+			'notify'          => __( 'Badge and email', 'user-session-manager' ),
+			'sign_out_others' => __( 'Keep only the newest session', 'user-session-manager' ),
+		);
+	}
+
+	/**
 	 * Saves the form.
 	 */
 	public function handle_form(): void {
@@ -232,11 +258,22 @@ final class SettingsPage implements Service {
 			}
 		}
 
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Each value is checked against Settings::SHARED_MODES below.
+		$submitted_shared = isset( $_POST['shared'] ) && is_array( $_POST['shared'] ) ? wp_unslash( $_POST['shared'] ) : array();
+		$shared           = array();
+		foreach ( array_keys( wp_roles()->get_names() ) as $role ) {
+			$value = isset( $submitted_shared[ $role ] ) ? sanitize_key( (string) $submitted_shared[ $role ] ) : '';
+			if ( in_array( $value, Settings::SHARED_MODES, true ) ) {
+				$shared[ $role ] = $value;
+			}
+		}
+
 		$mode = isset( $_POST['limit_mode'] ) ? sanitize_key( wp_unslash( $_POST['limit_mode'] ) ) : 'evict_oldest';
 
 		$this->settings->save(
 			array(
 				'policies'         => $policies,
+				'shared'           => $shared,
 				'limit_mode'       => in_array( $mode, Settings::LIMIT_MODES, true ) ? $mode : 'evict_oldest',
 				'new_device_email' => ! empty( $_POST['new_device_email'] ),
 				'device_days'      => isset( $_POST['device_days'] ) ? max( 1, min( 365, absint( $_POST['device_days'] ) ) ) : 30,
