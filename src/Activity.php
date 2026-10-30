@@ -124,9 +124,11 @@ final class Activity implements Service {
 
 		$now     = time();
 		$changed = false;
+		$active  = false;
 		if ( $now - (int) ( $session['last_seen'] ?? 0 ) >= $this->settings->last_seen_interval() ) {
 			$session['last_seen'] = $now;
 			$changed              = true;
+			$active               = true;
 		}
 
 		// Shorten an address stored before "store shortened IP addresses" was turned on.
@@ -139,6 +141,16 @@ final class Activity implements Service {
 
 		if ( $changed ) {
 			$this->sessions->update( $user_id, $verifier, $session );
+		}
+
+		if ( $active ) {
+			/**
+			 * Fires after "last active" was saved for a session, at most once per interval.
+			 *
+			 * @param int   $user_id The user.
+			 * @param array $session Session data: expiration, ip, ua, login, last_seen and handle.
+			 */
+			do_action( 'user_session_manager_session_active', $user_id, $session + array( 'handle' => $this->sessions->handle( $user_id, $verifier ) ) );
 		}
 	}
 

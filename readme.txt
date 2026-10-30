@@ -29,6 +29,7 @@ User Session Manager shows those sessions and lets you end them.
 * **Idle timeout per role**: sessions left unused for a number of minutes are signed out.
 * **Session length per role**, with and without "Remember Me".
 * **New device email** (off by default): users get an email when they sign in from a browser and network not seen on their account in the last 30 days.
+* **Shared login detection**: when the sessions of an account look like more than one person, such as two computers on different networks at the same time, the account gets a "Possibly shared" badge with the reasons. Per role you choose whether that also emails the user and the site administrator, or keeps only the newest session. A login is never refused on this guess.
 * **Shortened IP addresses**, if you would rather not store the full address.
 * A **Site Health** check that warns when administrator sessions never time out.
 
@@ -38,7 +39,7 @@ Free and open source under the GPL. No pro version, no upsells, no ads in wp-adm
 
 = Privacy =
 
-Sessions hold an IP address and a browser string. The plugin takes part in Tools > Export Personal Data (it lists a user's sessions) and Tools > Erase Personal Data (it signs the user out everywhere), adds suggested text to Settings > Privacy, and can store shortened IP addresses. The new device email keeps only a scrambled fingerprint of each browser and network, never the address, and forgets it after 30 days.
+Sessions hold an IP address and a browser string. The plugin takes part in Tools > Export Personal Data (it lists a user's sessions) and Tools > Erase Personal Data (it signs the user out everywhere), adds suggested text to Settings > Privacy, and can store shortened IP addresses. The new device email keeps only a scrambled fingerprint of each browser and network, never the address, and forgets it after 30 days. Shared login detection uses only what the sessions already hold and calls no outside service. When an account looks shared, a copy of the sessions behind it is kept with the reasons for 7 days after the last sign, and the export and erase tools cover it.
 
 = WP-CLI =
 
@@ -46,12 +47,13 @@ Sessions hold an IP address and a browser string. The plugin takes part in Tools
 * `wp user-session-manager revoke <handle>` signs out one session.
 * `wp user-session-manager sign-out <user>` signs a user out everywhere.
 * `wp user-session-manager prune` removes expired sessions and signs out idle ones.
+* `wp user-session-manager shared` lists accounts that look shared, with the reasons.
 * `wp user-session-manager policies` and `set-policy <role>` read and change the per-role policies.
 * `wp user-session-manager settings` reads and changes the other settings.
 
 = For developers =
 
-Every limit and default has a filter, and every sign out fires an action. On WordPress 6.9 and later, AI agents can list sessions and sign them out through the Abilities API. The full list is in [the reference](https://github.com/aryanjasala/user-session-manager/blob/main/docs/REFERENCE.md).
+Every limit and default has a filter, and every sign out fires an action. On WordPress 6.9 and later, AI agents can list sessions, find accounts that look shared and sign sessions out through the Abilities API. The full list is in [the reference](https://github.com/aryanjasala/user-session-manager/blob/main/docs/REFERENCE.md).
 
 == Frequently Asked Questions ==
 
@@ -74,6 +76,14 @@ It can, until the old session expires or an administrator signs it out from User
 = Does it work with social login and two-factor plugins? =
 
 Yes, for plugins that sign people in through WordPress's own login functions. A plugin that sets the login cookie itself cannot be refused before the session exists, so in refuse mode that session is ended right after it starts.
+
+= How does it decide that an account looks shared? =
+
+From the sessions it already has: the network of each IP address, the browser and device, and when each session was last used. By default it flags more than two networks at the same time, two computers (or two phones, or two tablets) on different networks at the same time, or more than four different devices in a day. A laptop on Wi-Fi and a phone on mobile data are one person, so they are not flagged. Developers can change every limit with the `user_session_manager_shared_login_rules` filter, and add countries from their own lookup.
+
+= Will it lock out people who share an account on purpose? =
+
+No. By default it only shows a badge. Signing out every session but the newest is a choice per role, and a login is never refused. For accounts meant to be shared, such as a kiosk, set the role to "Do not check" or use the `user_session_manager_shared_login_exempt` filter.
 
 = Does it work on multisite? =
 

@@ -24,7 +24,7 @@
 
 ---
 
-WordPress already records every login: the browser, the IP address, when it started and when it ends. It just never shows it, and the only control is "Log Out Everywhere Else" on your own profile. User Session Manager lists those sessions on each profile and across the site, signs out any one of them, and adds per-role limits, an idle timeout and a new device email.
+WordPress already records every login: the browser, the IP address, when it started and when it ends. It just never shows it, and the only control is "Log Out Everywhere Else" on your own profile. User Session Manager lists those sessions on each profile and across the site, signs out any one of them, and adds per-role limits, an idle timeout, a new device email and a flag for accounts that look shared.
 
 > [!NOTE]
 > Free and open source under the GPL. No pro version, no upsells, no ads in wp-admin, no tracking. And it stays that way.
@@ -37,6 +37,7 @@ WordPress already records every login: the browser, the IP address, when it star
 - **Sessions column** on the Users list, linked to each user's sessions
 - **Per-role policies**: sessions at once (sign out the oldest or refuse the login), idle timeout, and session length with and without "Remember Me"
 - **New device email** when someone signs in from a browser and network not seen in 30 days
+- **Shared login detection**: a "Possibly shared" badge with the reasons when an account's sessions look like more than one person, and per role a choice to also email or keep only the newest session
 - **Privacy**: export and erase tools, privacy policy text, and shortened IP addresses on request
 - **Abilities** for AI agents, **WP-CLI** for everything, and a **Site Health** check
 
@@ -82,7 +83,7 @@ A handle like `7-9f86...` is an HMAC of the session, so the token and the stored
 
 | Doc | What it covers |
 | --- | --- |
-| [Reference](docs/REFERENCE.md) | How sessions are read and ended, policies, hooks, abilities, WP-CLI, data and privacy |
+| [Reference](docs/REFERENCE.md) | How sessions are read and ended, policies, shared login detection, hooks, abilities, WP-CLI, data and privacy |
 | [Development](docs/DEVELOPMENT.md) | Local setup, commands and tests |
 | [Contributing](docs/CONTRIBUTING.md) | Pull requests, required checks and PR titles |
 | [Releasing](docs/RELEASING.md) | How merged pull requests become releases |
@@ -101,6 +102,8 @@ src/
 ├── Activity.php           last active, and the idle timeout
 ├── Limits.php             session limit and length at login
 ├── NewDevice.php          the new device email
+├── SharedLoginDetector.php  the checks behind shared login detection
+├── SharedLogins.php       flags, emails and sign outs for accounts that look shared
 ├── Pruner.php             the hourly clean-up
 ├── Privacy.php            export, erase and policy text
 ├── Access.php             who may see and end whose sessions
@@ -126,7 +129,7 @@ Small plugins that each fill one gap in WordPress, all free with no pro version:
 | <img src="https://raw.githubusercontent.com/aryanjasala/staging-guard/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Staging Guard](https://github.com/aryanjasala/staging-guard) | Stops staging copies from emailing real people or getting indexed |
 | <img src="https://raw.githubusercontent.com/aryanjasala/category-tag-trash/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Category & Tag Trash](https://github.com/aryanjasala/category-tag-trash) | A trash for categories, tags and custom terms, with undo and full restore |
 | <img src="https://raw.githubusercontent.com/aryanjasala/axle-read-only-mode/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Read-Only Mode](https://github.com/aryanjasala/axle-read-only-mode) | Read-only mode for WordPress during migrations and deploys |
-| <img src="https://raw.githubusercontent.com/aryanjasala/restore-blocks-from-revisions/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Restore Blocks from Revisions](https://github.com/aryanjasala/restore-blocks-from-revisions) | Restore a single block from an old revision, not the whole post |
+| <img src="https://raw.githubusercontent.com/aryanjasala/axle-block-restore/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Block Restore](https://github.com/aryanjasala/axle-block-restore) | Restore a single block from an old revision, not the whole post |
 | <img src="https://raw.githubusercontent.com/aryanjasala/activity-log-with-undo/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Activity Log with Undo](https://github.com/aryanjasala/activity-log-with-undo) | An activity log where every change you can reverse has an Undo button |
 | <img src="https://raw.githubusercontent.com/aryanjasala/agent-governance/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Agent Governance](https://github.com/aryanjasala/agent-governance) | Hold risky AI agent calls for approval, preview what they change, and roll back a session |
 | <img src="https://raw.githubusercontent.com/aryanjasala/block-doctor/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Block Doctor](https://github.com/aryanjasala/block-doctor) | Scan the whole site for invalid and broken blocks and fix them in bulk, with undo |

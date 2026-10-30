@@ -41,6 +41,34 @@ Sessions are deleted when they end, so the plugin keeps a short memory per user 
 
 The first login the plugin sees for a user only fills that memory (from their current sessions too), so turning the email on does not email everyone.
 
+## Shared login detection
+
+Some accounts are used by more than one person: a password passed around a team, or a paid membership shared with friends. User Session Manager looks for signs of that in the sessions it already has: the IP address (shortened, if the site stores shortened addresses), the parsed browser and the times. It calls no outside service.
+
+The check runs when someone signs in and each time "last active" is saved for a session (at most every 5 minutes), on that user's sessions only. Sessions count as used at the same time when their last activity is within 15 minutes of the most recently used one. A network is the first three parts of an IPv4 address (the first 48 bits of IPv6), so shortened addresses work the same.
+
+| Sign | Flagged when | Rule |
+| --- | --- | --- |
+| Networks at the same time | more than 2 | `max_networks` |
+| The same kind of device (two computers, two phones, two tablets) on different networks at the same time | more than 1 network for one kind | `max_networks_per_type` |
+| Countries at the same time, only when a filter supplies the country | more than 1 | `max_countries` |
+| Different devices (browser and system) within a window | more than 4 in a day | `max_devices`, `window` |
+
+One person with a laptop on Wi-Fi and a phone on mobile data is two networks and two kinds of device, so they are not flagged.
+
+When a sign shows up, the sessions behind it get a **Possibly shared** badge on the profile and on Users > Sessions, and both screens list the reasons: which sessions, from where, and when they were last used. Users > Sessions gets a **Possibly shared** view once any account is flagged. The flag lives in the `user_session_manager_shared` user meta with a copy of those sessions, and is dropped 7 days after the last sign (`keep_days`).
+
+What else happens is set per role in the "Account looks shared" column under **Settings > User Sessions**, or with `wp user-session-manager set-policy <role> --shared=<mode>`:
+
+| Choice | `--shared` | Effect |
+| --- | --- | --- |
+| Do not check | `off` | The role is left out, for accounts meant to be shared, such as a kiosk |
+| Show a badge | `flag` | The default. Only the badge and the reasons |
+| Badge and email | `notify` | Also emails the user and the site administrator |
+| Keep only the newest session | `sign_out_others` | Also signs out every session except the newest login |
+
+A user with several roles gets the most generous choice: "Do not check" beats the rest, and a badge beats an email. The email or the sign out only happens when the reasons involve a session not seen in an earlier flag, so an account that stays shared is not emailed every 5 minutes. A login is never refused on this guess.
+
 ## Signing out everywhere
 
 "Sign out everywhere" never runs on one click. On Users > Sessions, the row action and the bulk action both show a question first, with how many devices are signed in, and nothing ends until it is answered. On someone else's profile the button asks the same way.
@@ -69,12 +97,20 @@ On profiles that show the sessions table, core's own "Log Out Everywhere Else" r
 | `user_session_manager_blocked_login_message` | filter | `( string $message, WP_User $user, int $max, int $active )`. The login form error in refuse mode. It states the limit and the sessions the user has now apart, since a lowered limit can leave someone over it. Basic HTML allowed |
 | `user_session_manager_confirm_message` | filter | `( string $message, int[] $users, int $sessions, bool $you )`. The question asked before users are signed out everywhere. `$you` is true when the person asking is one of them, and then the default answer keeps their browser signed in |
 | `user_session_manager_notice` | filter | `( string $text, string $code, int $count, string $user )`. The notice after a sign out from a screen. `$code` is `revoked`, `not_found`, `signed_out_others`, `signed_out_user` or `bulk`; `$user` is the login for `signed_out_user` |
+| `user_session_manager_shared_login_rules` | filter | `( array $rules, WP_User $user )`. When an account looks shared: `overlap` (seconds, default 900), `max_networks` (2), `max_networks_per_type` (1), `max_countries` (1), `window` (seconds, 86400), `max_devices` (4) and `keep_days` (7). 0 turns a check off |
+| `user_session_manager_shared_login_action` | filter | `( string $action, WP_User $user, array $evidence )`. `flag`, `notify` or `sign_out_others`, from the role's setting. Anything else falls back to `flag` |
+| `user_session_manager_shared_login_exempt` | filter | `( bool $exempt, WP_User $user )`. True leaves the user out of shared login detection. Default true when one of their roles is set to "Do not check" |
+| `user_session_manager_shared_login_country` | filter | `( string $country, string $ip, int $user_id )`. The country of an address, from your own lookup. Default empty, which leaves countries out of the check |
+| `user_session_manager_shared_login_email` | filter | `( array\|false $email, WP_User $user, array $flag, string $audience )`. The email about an account that looks shared. `$audience` is `user` or `admin`. Return false or an empty `to` to skip it |
+| `user_session_manager_shared_login_evidence_text` | filter | `( string $text, array $evidence )`. How one reason reads on the screens, in WP-CLI, abilities and the emails |
 | `user_session_manager_hide_core_sessions` | filter | `( bool $hide, int $user_id )`. Whether core's "Log Out Everywhere Else" row is hidden on a profile that shows the sessions table. Default true |
 | `user_session_manager_list_per_page` | filter | `( int $per_page )`. Rows per page on Users > Sessions. Default 20 |
 | `user_session_manager_max_users_scanned` | filter | `( int $max )`. Signed-in users one listing reads at most. Default 10000 |
 | `user_session_manager_prune_batch` | filter | `( int $size )`. Users one run of the hourly clean-up looks at. Default 500 |
 | `user_session_manager_session_started` | action | `( WP_User $user, array $session )`. A user signed in and their new session was saved, after the limit was applied |
-| `user_session_manager_session_revoked` | action | `( int $user_id, array $session, string $context )`. One session was signed out. `$context` is `profile`, `admin`, `bulk`, `cli` or `ability` |
+| `user_session_manager_session_revoked` | action | `( int $user_id, array $session, string $context )`. One session was signed out. `$context` is `profile`, `admin`, `bulk`, `cli`, `ability` or `shared` (keep only the newest session) |
+| `user_session_manager_session_active` | action | `( int $user_id, array $session )`. "Last active" was saved for a session, at most once per interval |
+| `user_session_manager_shared_login_detected` | action | `( WP_User $user, array $sessions, array $evidence )`. An account looks shared, and the reasons involve a session not seen before. Each of `$sessions` has `handle`, `device`, `device_type`, `ip`, `country`, `login` and `last_seen`. Each of `$evidence` has `type` (`networks`, `countries`, `same_type` or `devices`), `count`, `limit`, `handles` and `time` |
 | `user_session_manager_user_signed_out_everywhere` | action | `( int $user_id, int $count, string $context )`. Every session of a user was ended. `$context` also can be `privacy` |
 | `user_session_manager_session_evicted` | action | `( int $user_id, array $evicted, array $new )`. An old session was signed out to make room for a new login |
 | `user_session_manager_login_blocked` | action | `( WP_User $user, int $max, int $active )`. A login was refused over the limit |
@@ -109,6 +145,19 @@ add_filter( 'user_session_manager_new_device_email', function ( $email, $user ) 
 	return $email;
 }, 10, 2 );
 
+// Countries from your own GeoIP database. The plugin never calls an outside service.
+add_filter( 'user_session_manager_shared_login_country', function ( $country, $ip ) {
+	return my_geoip_country( $ip ); // Your own lookup.
+}, 10, 2 );
+
+// Flag members with more than three devices in a day, not four.
+add_filter( 'user_session_manager_shared_login_rules', function ( $rules, $user ) {
+	if ( in_array( 'subscriber', $user->roles, true ) ) {
+		$rules['max_devices'] = 3;
+	}
+	return $rules;
+}, 10, 2 );
+
 // Log every sign out to your own audit trail.
 add_action( 'user_session_manager_session_revoked', function ( $user_id, $session, $context ) {
 	error_log( sprintf( 'Session of user %d on %s signed out from %s', $user_id, $session['ip'], $context ) );
@@ -123,6 +172,7 @@ On WordPress 6.9 and later, User Session Manager registers [abilities](https://d
 | --- | --- | --- |
 | `user-session-manager/list-sessions` | Read-only. Sessions with handle, device, IP address, signed in, last active and expires. No input: your own. `user` (ID, login or email): that user's. `all`: everyone's. `limit`, 1 to 100, default 50 | Any logged-in user for their own. The plugin capability, `list_users` and `edit_user` for someone else's |
 | `user-session-manager/revoke-session` | Signs out the session with `handle`. Destructive and idempotent: a session that already ended returns `revoked: false` | Your own session, or the plugin capability for someone else's |
+| `user-session-manager/list-shared-logins` | Read-only. Accounts that look shared, with each reason, the sessions behind it (handle, device, IP address, country, signed in, last active), what was done and when. No input: every flagged account. `user`: only that user. `limit`, 1 to 100, default 50 | The plugin capability and `list_users` for every account. Your own account without them, or the plugin capability and `edit_user` for someone else's |
 | `user-session-manager/sign-out-user` | Ends every session of `user`. Returns `sessions_ended` | Yourself, or the plugin capability for someone else |
 
 Run them over REST with `GET .../list-sessions/run?input[user]=alice` and `DELETE .../revoke-session/run?input[handle]=7-...`.
@@ -134,8 +184,9 @@ wp user-session-manager list [--user=<user>] [--fields=<fields>] [--format=table
 wp user-session-manager revoke <handle>...
 wp user-session-manager sign-out <user>                 # ID, login or email
 wp user-session-manager prune                           # expired and idle sessions, every user
+wp user-session-manager shared [--fields=<fields>] [--format=table|csv|json|yaml|ids|count]   # accounts that look shared
 wp user-session-manager policies [--format=<format>]
-wp user-session-manager set-policy <role> [--max-sessions=<n>] [--idle-minutes=<n>] [--lifetime-hours=<n>] [--remember-hours=<n>]
+wp user-session-manager set-policy <role> [--max-sessions=<n>] [--idle-minutes=<n>] [--lifetime-hours=<n>] [--remember-hours=<n>] [--shared=off|flag|notify|sign_out_others]
 wp user-session-manager settings [--limit-mode=evict_oldest|block] [--new-device-email=on|off] [--device-days=<n>] [--mask-ip=on|off] [--format=json]
 ```
 
@@ -147,24 +198,26 @@ wp user-session-manager settings [--limit-mode=evict_oldest|block] [--new-device
 | --- | --- |
 | `session_tokens` user meta (core's) | The sessions themselves. The plugin adds `last_seen` to each, and shortens `ip` when asked |
 | `user_session_manager_devices` user meta | Only with the new device email on: HMAC fingerprints of browser, system and IP address, with the browser label and last seen time. Entries older than 30 days are dropped |
-| `user_session_manager_settings` option (network option on multisite) | Per-role policies, over-the-limit mode, new device email, days to remember devices, IP shortening |
+| `user_session_manager_shared` user meta | Only for accounts that look shared: the reasons, a copy of the sessions behind them (browser, IP address as stored, country when a filter gives one, times) and what was done. Dropped 7 days after the last sign |
+| `user_session_manager_settings` option (network option on multisite) | Per-role policies, what happens when an account looks shared, over-the-limit mode, new device email, days to remember devices, IP shortening |
 | `user_session_manager_prune_cursor` option (network option on multisite) | Where the hourly clean-up carries on |
 
 The `user_session_manager_prune` cron event runs hourly, on the main site of a network. Each run looks at 500 users with sessions, removes expired ones (core only does that when the user signs in again) and signs out idle ones.
 
 The total shown in Site Health is cached in the object cache until any user's sessions change.
 
-Uninstalling removes the settings, the cron event and the device memory on every site. The `last_seen` value inside core's sessions stays: core ignores it, and it goes away with each session.
+Uninstalling removes the settings, the cron event, the device memory and the shared login flags on every site. The `last_seen` value inside core's sessions stays: core ignores it, and it goes away with each session.
 
 ## Privacy
 
 Sessions hold an IP address and a browser string, which are personal data. So:
 
-- **Tools > Export Personal Data** lists a user's sessions (device, browser string, IP address, signed in, last active, expires) and remembered devices
-- **Tools > Erase Personal Data** signs the user out everywhere and forgets their devices
+- **Tools > Export Personal Data** lists a user's sessions (device, browser string, IP address, signed in, last active, expires), remembered devices and the sessions behind a shared login flag
+- **Tools > Erase Personal Data** signs the user out everywhere, forgets their devices and drops the shared login flag
 - **Settings > Privacy** gets suggested text for your privacy policy
 - "Store shortened IP addresses" keeps only the first three parts of an IPv4 address (the first 48 bits of IPv6), on new sessions at login and on older ones the next time they are used
-- Sessions are deleted when they end, so how long they are kept follows the session length per role. Device memory is kept for 30 days by default
+- Sessions are deleted when they end, so how long they are kept follows the session length per role. Device memory is kept for 30 days by default, a shared login flag for 7 days after the last sign
+- Shared login detection uses only what the sessions already hold. It never looks up where an address is: countries only come into it when your own filter supplies them
 
 ## Multisite
 

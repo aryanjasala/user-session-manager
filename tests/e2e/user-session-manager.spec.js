@@ -9,8 +9,13 @@ const SESSIONS = '/wp-admin/users.php?page=user-sessions';
 const SETTINGS = '/wp-admin/options-general.php?page=user-session-manager';
 const PASSWORD = 'e2e-password-123';
 
-// A must-use plugin for the suite: captures email and lets a test force the idle timeout.
+// A must-use plugin for the suite: captures email, lets a test force the idle timeout,
+// and lets a browser context say which IP address it signs in from (the X-USM-E2E-IP header),
+// since every context reaches the Docker site from the same address.
 const MU_PLUGIN = `<?php
+if ( ! empty( $_SERVER['HTTP_X_USM_E2E_IP'] ) && filter_var( $_SERVER['HTTP_X_USM_E2E_IP'], FILTER_VALIDATE_IP ) ) {
+	$_SERVER['REMOTE_ADDR'] = $_SERVER['HTTP_X_USM_E2E_IP'];
+}
 add_filter( 'pre_wp_mail', function ( $short, $atts ) {
 	$log   = get_option( 'usm_e2e_mail', array() );
 	$log[] = array( 'to' => $atts['to'], 'subject' => $atts['subject'], 'message' => $atts['message'] );
@@ -28,6 +33,8 @@ const id = ( login ) => Number( wp( 'user', 'get', login, '--field=ID' ) );
 const sessions = ( login ) => JSON.parse( wp( 'user-session-manager', 'list', `--user=${ login }`, '--fields=handle,device,ip,ua,signed_in,last_active,expires', '--format=json' ) );
 const raw = ( login ) => JSON.parse( wpEval( `echo wp_json_encode( get_user_meta( ${ id( login ) }, 'session_tokens', true ) ?: new stdClass() );` ) );
 const mail = () => JSON.parse( wpEval( `echo wp_json_encode( get_option( 'usm_e2e_mail', array() ) );` ) );
+const shared = () => JSON.parse( wp( 'user-session-manager', 'shared', '--fields=user,action,sessions,evidence,signed_out', '--format=json' ) );
+const flag = ( login ) => JSON.parse( wpEval( `echo wp_json_encode( get_user_meta( ${ id( login ) }, 'user_session_manager_shared', true ) ?: null );` ) );
 
 /**
  * Signs a user in through wp-login.php in a fresh browser context.
@@ -37,8 +44,8 @@ const mail = () => JSON.parse( wpEval( `echo wp_json_encode( get_option( 'usm_e2
  * @param {string}                             userAgent User agent for the context.
  * @return {Promise<{context: import('@playwright/test').BrowserContext, page: import('@playwright/test').Page}>}
  */
-async function signIn( browser, login, userAgent ) {
-	return logInAs( browser, login, PASSWORD, { userAgent } );
+async function signIn( browser, login, userAgent, ip = '' ) {
+	return logInAs( browser, login, PASSWORD, { userAgent, ...( ip ? { extraHTTPHeaders: { 'X-USM-E2E-IP': ip } } : {} ) } );
 }
 
 /**
@@ -79,6 +86,7 @@ test.describe( 'User Session Manager', () => {
 				$user = get_user_by( 'login', $login );
 				delete_user_meta( $user->ID, 'session_tokens' );
 				delete_user_meta( $user->ID, 'user_session_manager_devices' );
+				delete_user_meta( $user->ID, 'user_session_manager_shared' );
 			}` );
 	} );
 
@@ -439,7 +447,7 @@ test.describe( 'User Session Manager', () => {
 
 		wp( 'user-session-manager', 'set-policy', 'editor', '--max-sessions=3', '--idle-minutes=45', '--lifetime-hours=8', '--remember-hours=72' );
 		const editor = JSON.parse( wp( 'user-session-manager', 'policies', '--format=json' ) ).find( ( row ) => row.role === 'editor' );
-		expect( editor ).toEqual( { role: 'editor', max_sessions: 3, idle_minutes: 45, lifetime_hours: 8, remember_hours: 72 } );
+		expect( editor ).toEqual( { role: 'editor', max_sessions: 3, idle_minutes: 45, lifetime_hours: 8, remember_hours: 72, shared: 'flag' } );
 
 		wp( 'user-session-manager', 'settings', '--limit-mode=block', '--mask-ip=on' );
 		expect( JSON.parse( wp( 'user-session-manager', 'settings', '--format=json' ) ) ).toMatchObject( { limit_mode: 'block', mask_ip: true, new_device_email: false } );
@@ -453,7 +461,7 @@ test.describe( 'User Session Manager', () => {
 		const path = ( name ) => `/wp-abilities/v1/abilities/user-session-manager/${ name }/run`;
 
 		const listed = await rest( 'GET', '/wp-abilities/v1/abilities?category=user-session-manager' );
-		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'user-session-manager/list-sessions', 'user-session-manager/revoke-session', 'user-session-manager/sign-out-user' ] );
+		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'user-session-manager/list-sessions', 'user-session-manager/list-shared-logins', 'user-session-manager/revoke-session', 'user-session-manager/sign-out-user' ] );
 		// MCP clients only list abilities marked public.
 		expect( JSON.parse( wpEval( `echo wp_json_encode( array_values( array_filter( array_map( function ( $ability ) { $meta = $ability->get_meta(); return ( ! empty( $meta['public'] ) && ! empty( $meta['mcp']['public'] ) ) ? '' : $ability->get_name(); }, wp_get_abilities() ), function ( $name ) { return 0 === strpos( $name, 'user-session-manager/' ); } ) ) );` ) ) ).toEqual( [] );
 
@@ -487,5 +495,144 @@ test.describe( 'User Session Manager', () => {
 		expect( asSam( `$r = wp_get_ability( 'user-session-manager/sign-out-user' )->execute( array( 'user' => 'alice' ) ); echo is_wp_error( $r ) ? $r->get_error_code() : 'ran';` ) ).toBe( 'ability_invalid_permissions' );
 		expect( asSam( `$r = wp_get_ability( 'user-session-manager/list-sessions' )->execute( array() ); echo is_wp_error( $r ) ? $r->get_error_code() : $r['total'];` ) ).toBe( '0' );
 		expect( sessions( 'alice' ) ).toHaveLength( 1 );
+	} );
+
+	test( 'two computers on different networks at once flag the account, with the reasons on both screens', async ( { page, browser } ) => {
+		const windows = await open( browser, 'alice', FIREFOX, '192.0.2.10' );
+		await open( browser, 'alice', CHROME, '198.51.100.20' );
+
+		// Stored once, with the evidence and a copy of the sessions behind it.
+		const stored = flag( 'alice' );
+		expect( stored.action ).toBe( 'flag' );
+		expect( stored.evidence.map( ( e ) => e.type ) ).toEqual( [ 'same_type' ] );
+		expect( Object.values( stored.sessions ).map( ( s ) => s.ip ).sort() ).toEqual( [ '192.0.2.10', '198.51.100.20' ] );
+		expect( shared() ).toEqual( [ { user: 'alice', action: 'flag', sessions: 2, evidence: '2 computers on different networks were used at the same time.', signed_out: 0 } ] );
+		// Just a flag: nobody is emailed or signed out on a guess.
+		expect( mail() ).toHaveLength( 0 );
+		expect( sessions( 'alice' ) ).toHaveLength( 2 );
+
+		// Her own profile says so, and marks both sessions.
+		await windows.page.goto( '/wp-admin/profile.php' );
+		const box = windows.page.locator( '.usm-shared' );
+		await expect( box ).toContainText( 'This account looks shared by more than one person.' );
+		await expect( box ).toContainText( '2 computers on different networks were used at the same time.' );
+		await expect( box ).toContainText( 'Firefox on Windows, 192.0.2.10, last active' );
+		await expect( box ).toContainText( 'Chrome on macOS, 198.51.100.20, last active' );
+		await expect( box ).toContainText( 'Nothing was blocked.' );
+		await expect( windows.page.locator( '.usm-sessions .usm-badge-shared' ) ).toHaveCount( 2 );
+
+		// Users > Sessions: a "Possibly shared" view, the badges, and the reasons for one user.
+		await page.goto( SESSIONS );
+		await page.locator( '.subsubsub' ).getByRole( 'link', { name: /Possibly shared/ } ).click();
+		await expect( page.locator( '.subsubsub .current' ) ).toContainText( 'Possibly shared (1)' );
+		await expect( page.locator( 'tbody .usm-session' ) ).toHaveCount( 2 );
+		await expect( page.locator( 'tbody .usm-session .usm-badge-shared' ) ).toHaveCount( 2 );
+		const row = page.locator( 'tbody .usm-session' ).first();
+		await row.hover();
+		await row.getByRole( 'link', { name: 'Only this user' } ).click();
+		await expect( page.locator( '.usm-shared' ) ).toContainText( '2 computers on different networks were used at the same time.' );
+	} );
+
+	test( 'a phone and a laptop on two networks are one person, not a shared account', async ( { page, browser } ) => {
+		await open( browser, 'alice', CHROME, '192.0.2.10' );
+		await open( browser, 'alice', IPHONE, '198.51.100.20' );
+
+		expect( flag( 'alice' ) ).toBeNull();
+		expect( shared() ).toEqual( [] );
+		await page.goto( SESSIONS );
+		await expect( page.locator( '.subsubsub' ) ).toHaveCount( 0 );
+	} );
+
+	test( '"Badge and email" emails the user and the administrator, once per new session', async ( { page, browser } ) => {
+		await page.goto( SETTINGS );
+		await page.getByLabel( 'Author: Account looks shared' ).selectOption( 'notify' );
+		await page.getByRole( 'button', { name: 'Save settings' } ).click();
+		await expect( page.locator( '.notice-success' ) ).toBeVisible();
+		expect( JSON.parse( wp( 'option', 'get', 'user_session_manager_settings', '--format=json' ) ).shared.author ).toBe( 'notify' );
+		await expect( page.getByLabel( 'Author: Account looks shared' ) ).toHaveValue( 'notify' );
+
+		const windows = await open( browser, 'alice', FIREFOX, '192.0.2.10' );
+		await open( browser, 'alice', CHROME, '198.51.100.20' );
+
+		const sent = mail();
+		expect( sent.map( ( m ) => m.to ) ).toEqual( [ 'alice@example.com', 'admin@example.com' ] );
+		expect( sent[ 0 ].subject ).toContain( 'Your account was used from several places at once' );
+		expect( sent[ 0 ].message ).toContain( '- 2 computers on different networks were used at the same time.' );
+		expect( sent[ 1 ].subject ).toContain( 'The account alice may be shared' );
+		expect( sent[ 1 ].message ).toContain( `user_id=${ id( 'alice' ) }` );
+		expect( flag( 'alice' ).action ).toBe( 'notify' );
+
+		// More activity from the same sessions sends nothing new.
+		wpEval( `$id = get_user_by( 'login', 'alice' )->ID; $all = get_user_meta( $id, 'session_tokens', true );
+			foreach ( $all as $k => $s ) { $all[ $k ]['last_seen'] = time() - 400; } update_user_meta( $id, 'session_tokens', $all );` );
+		await windows.page.goto( '/wp-admin/profile.php' );
+		expect( mail() ).toHaveLength( 2 );
+		expect( sessions( 'alice' ) ).toHaveLength( 2 );
+	} );
+
+	test( '"Keep only the newest session" signs out the rest, and "Do not check" leaves an account alone', async ( { browser } ) => {
+		wp( 'user-session-manager', 'set-policy', 'author', '--shared=sign_out_others' );
+		wp( 'user-session-manager', 'set-policy', 'editor', '--shared=off' );
+		expect( JSON.parse( wp( 'user-session-manager', 'policies', '--format=json' ) ).find( ( r ) => r.role === 'author' ).shared ).toBe( 'sign_out_others' );
+
+		const first = await open( browser, 'alice', FIREFOX, '192.0.2.10' );
+		const second = await open( browser, 'alice', CHROME, '198.51.100.20' );
+
+		expect( sessions( 'alice' ).map( ( s ) => s.ua ) ).toEqual( [ CHROME ] );
+		expect( await signedIn( first.page ) ).toBe( false );
+		expect( await signedIn( second.page ) ).toBe( true );
+		expect( shared() ).toEqual( [ expect.objectContaining( { user: 'alice', action: 'sign_out_others', signed_out: 1 } ) ] );
+		await second.page.goto( '/wp-admin/profile.php' );
+		await expect( second.page.locator( '.usm-shared' ) ).toContainText( '1 session was signed out. The newest one was kept.' );
+
+		// An editor account meant to be shared, such as a kiosk, is never checked.
+		await open( browser, 'bob', FIREFOX, '192.0.2.10' );
+		await open( browser, 'bob', CHROME, '198.51.100.20' );
+		expect( flag( 'bob' ) ).toBeNull();
+		expect( sessions( 'bob' ) ).toHaveLength( 2 );
+	} );
+
+	test( 'ability: list accounts that look shared, with permissions', async ( { rest, browser } ) => {
+		test.skip( 'yes' !== wpEval( "echo function_exists( 'wp_register_ability' ) ? 'yes' : 'no';" ), 'The Abilities API needs WordPress 6.9.' );
+		await open( browser, 'alice', FIREFOX, '192.0.2.10' );
+		await open( browser, 'alice', CHROME, '198.51.100.20' );
+		const path = '/wp-abilities/v1/abilities/user-session-manager/list-shared-logins/run';
+
+		const ability = await rest( 'GET', '/wp-abilities/v1/abilities/user-session-manager/list-shared-logins' );
+		expect( ability.body.meta.annotations ).toMatchObject( { readonly: true } );
+
+		const listed = await rest( 'GET', path );
+		expect( listed.status ).toBe( 200 );
+		expect( listed.body.total ).toBe( 1 );
+		const account = listed.body.accounts[ 0 ];
+		expect( account ).toMatchObject( { user_login: 'alice', action: 'flag', signed_out: 0 } );
+		expect( account.evidence[ 0 ] ).toMatchObject( { type: 'same_type', summary: '2 computers on different networks were used at the same time.' } );
+		expect( account.sessions.map( ( s ) => s.ip ).sort() ).toEqual( [ '192.0.2.10', '198.51.100.20' ] );
+		// The handles work with revoke-session while the session is active.
+		expect( sessions( 'alice' ).map( ( s ) => s.handle ).sort() ).toEqual( account.sessions.map( ( s ) => s.handle ).sort() );
+
+		expect( ( await rest( 'GET', `${ path }?input[user]=bob` ) ).body ).toEqual( { total: 0, accounts: [] } );
+
+		// A subscriber may ask about their own account, not about everyone.
+		const asSam = ( php ) => wpEval( `wp_set_current_user( get_user_by( 'login', 'sam' )->ID ); ${ php }` );
+		expect( asSam( `$r = wp_get_ability( 'user-session-manager/list-shared-logins' )->execute( array() ); echo is_wp_error( $r ) ? $r->get_error_code() : 'ran';` ) ).toBe( 'ability_invalid_permissions' );
+		expect( asSam( `$r = wp_get_ability( 'user-session-manager/list-shared-logins' )->execute( array( 'user' => 'sam' ) ); echo is_wp_error( $r ) ? $r->get_error_code() : $r['total'];` ) ).toBe( '0' );
+	} );
+
+	test( 'erasing personal data drops the flag too', async ( { browser } ) => {
+		await open( browser, 'alice', FIREFOX, '192.0.2.10' );
+		await open( browser, 'alice', CHROME, '198.51.100.20' );
+		expect( flag( 'alice' ) ).not.toBeNull();
+
+		const exported = JSON.parse(
+			wpEval( `$tools = apply_filters( 'wp_privacy_personal_data_exporters', array() );
+				echo wp_json_encode( call_user_func( $tools['user-session-manager']['callback'], 'alice@example.com', 1 ) );` )
+		);
+		expect( exported.data.filter( ( item ) => item.group_id === 'user-session-manager-shared' ) ).toHaveLength( 2 );
+
+		wpEval( `$tools = apply_filters( 'wp_privacy_personal_data_erasers', array() );
+			call_user_func( $tools['user-session-manager']['callback'], 'alice@example.com', 1 );` );
+		expect( flag( 'alice' ) ).toBeNull();
+		expect( shared() ).toEqual( [] );
 	} );
 } );

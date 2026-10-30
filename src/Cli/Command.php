@@ -11,6 +11,7 @@ use AryanX\Axle\UserSessionManager\Abilities;
 use AryanX\Axle\UserSessionManager\Pruner;
 use AryanX\Axle\UserSessionManager\Sessions;
 use AryanX\Axle\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\SharedLogins;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -43,16 +44,25 @@ final class Command {
 	private Pruner $pruner;
 
 	/**
+	 * Shared login detection.
+	 *
+	 * @var SharedLogins
+	 */
+	private SharedLogins $shared;
+
+	/**
 	 * Sets up the command.
 	 *
-	 * @param Settings $settings Saved settings.
-	 * @param Sessions $sessions Session store.
-	 * @param Pruner   $pruner   The clean-up.
+	 * @param Settings     $settings Saved settings.
+	 * @param Sessions     $sessions Session store.
+	 * @param Pruner       $pruner   The clean-up.
+	 * @param SharedLogins $shared   Shared login detection.
 	 */
-	public function __construct( Settings $settings, Sessions $sessions, Pruner $pruner ) {
+	public function __construct( Settings $settings, Sessions $sessions, Pruner $pruner, SharedLogins $shared ) {
 		$this->settings = $settings;
 		$this->sessions = $sessions;
 		$this->pruner   = $pruner;
+		$this->shared   = $shared;
 	}
 
 	/**
@@ -189,6 +199,58 @@ final class Command {
 	}
 
 	/**
+	 * Lists accounts that look shared by several people, most recently flagged first.
+	 *
+	 * An account is flagged when its sessions look like more than one person,
+	 * for example two computers on different networks at the same time. The
+	 * flag is kept for 7 days after the last sign of it.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--fields=<fields>]
+	 * : Comma-separated fields. Default user,first_noticed,last_seen,action,sessions,evidence. Also: user_id, signed_out.
+	 *
+	 * [--format=<format>]
+	 * : table, csv, json, yaml, ids or count.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp user-session-manager shared
+	 *     wp user-session-manager shared --format=json
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Named arguments.
+	 */
+	public function shared( array $args, array $assoc_args ): void {
+		$rows = array();
+		foreach ( $this->shared->flagged() as $user_id => $flag ) {
+			$user   = get_userdata( $user_id );
+			$rows[] = array(
+				'user'          => $user ? $user->user_login : (string) $user_id,
+				'user_id'       => $user_id,
+				'first_noticed' => gmdate( 'Y-m-d H:i:s', $flag['detected'] ),
+				'last_seen'     => gmdate( 'Y-m-d H:i:s', $flag['updated'] ),
+				'action'        => $flag['action'],
+				'sessions'      => count( $flag['sessions'] ),
+				'signed_out'    => $flag['signed_out'],
+				'evidence'      => implode( ' ', array_map( array( SharedLogins::class, 'evidence_text' ), $flag['evidence'] ) ),
+			);
+		}
+
+		$format = (string) ( $assoc_args['format'] ?? 'table' );
+		if ( 'ids' === $format ) {
+			\WP_CLI::line( implode( ' ', array_column( $rows, 'user_id' ) ) );
+			return;
+		}
+
+		$fields = isset( $assoc_args['fields'] ) ? array_map( 'trim', explode( ',', (string) $assoc_args['fields'] ) ) : array( 'user', 'first_noticed', 'last_seen', 'action', 'sessions', 'evidence' );
+		\WP_CLI\Utils\format_items( $format, $rows, $fields );
+	}
+
+	/**
 	 * Lists the session policy of every role.
 	 *
 	 * ## OPTIONS
@@ -205,10 +267,10 @@ final class Command {
 	public function policies( array $args, array $assoc_args ): void {
 		$rows = array();
 		foreach ( array_keys( wp_roles()->get_names() ) as $role ) {
-			$rows[] = array( 'role' => $role ) + $this->settings->policy( (string) $role );
+			$rows[] = array( 'role' => $role ) + $this->settings->policy( (string) $role ) + array( 'shared' => $this->settings->shared_mode( (string) $role ) );
 		}
 
-		\WP_CLI\Utils\format_items( (string) ( $assoc_args['format'] ?? 'table' ), $rows, array_merge( array( 'role' ), array_keys( Settings::POLICY_DEFAULTS ) ) );
+		\WP_CLI\Utils\format_items( (string) ( $assoc_args['format'] ?? 'table' ), $rows, array_merge( array( 'role' ), array_keys( Settings::POLICY_DEFAULTS ), array( 'shared' ) ) );
 	}
 
 	/**
@@ -231,9 +293,13 @@ final class Command {
 	 * [--remember-hours=<hours>]
 	 * : Session length with "Remember Me".
 	 *
+	 * [--shared=<mode>]
+	 * : When an account looks shared: off (do not check), flag, notify or sign_out_others.
+	 *
 	 * ## EXAMPLES
 	 *
 	 *     wp user-session-manager set-policy administrator --max-sessions=2 --idle-minutes=30
+	 *     wp user-session-manager set-policy subscriber --shared=notify
 	 *
 	 * @subcommand set-policy
 	 *
@@ -254,9 +320,20 @@ final class Command {
 			}
 		}
 
-		$policies          = $this->settings->get( 'policies' );
-		$policies[ $role ] = Settings::sanitize_policy( $policy );
-		$this->settings->save( array( 'policies' => $policies ) );
+		$changes = array();
+		if ( isset( $assoc_args['shared'] ) ) {
+			if ( ! in_array( $assoc_args['shared'], Settings::SHARED_MODES, true ) ) {
+				\WP_CLI::error( '--shared must be off, flag, notify or sign_out_others.' );
+			}
+			$shared            = $this->settings->get( 'shared' );
+			$shared[ $role ]   = (string) $assoc_args['shared'];
+			$changes['shared'] = $shared;
+		}
+
+		$policies            = $this->settings->get( 'policies' );
+		$policies[ $role ]   = Settings::sanitize_policy( $policy );
+		$changes['policies'] = $policies;
+		$this->settings->save( $changes );
 
 		\WP_CLI::success( "Saved the policy for {$role}." );
 	}

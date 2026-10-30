@@ -21,6 +21,18 @@
       "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
     },
     {
+      "name": "Another user's profile with a \"Possibly shared\" account",
+      "setup": [
+        { "js": "seed.js", "call": "createPeople" },
+        { "js": "seed.js", "call": "markShared", "args": ["maria"] },
+        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+      ],
+      "url": "/wp-admin/user-edit.php?user_id={maria}",
+      "steps": [{ "waitFor": ".usm-shared" }],
+      "include": [".usm-profile"],
+      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+    },
+    {
       "name": "Users > Sessions with every signed-in device",
       "setup": [
         { "js": "seed.js", "call": "createPeople" },
@@ -38,6 +50,18 @@
       ],
       "url": "/wp-admin/users.php?page=user-sessions&action=sign_out&user={maria}",
       "steps": [{ "waitFor": ".usm-confirm" }],
+      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+    },
+    {
+      "name": "Users > Sessions, the \"Possibly shared\" view with the reasons",
+      "setup": [
+        { "js": "seed.js", "call": "createPeople" },
+        { "js": "seed.js", "call": "markShared", "args": ["maria"] },
+        { "js": "seed.js", "call": "addSessions", "args": [[["james", "edge", "198.51.100.12", 50, 12]]] },
+        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+      ],
+      "url": "/wp-admin/users.php?page=user-sessions&shared=1&user_id={maria}",
+      "steps": [{ "waitFor": ".usm-shared" }, { "waitFor": ".subsubsub" }],
       "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
     },
     {

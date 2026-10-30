@@ -391,6 +391,7 @@ final class Sessions implements Service {
 	 *     @type string $search   User login, email or name, or the start of an IP address.
 	 *     @type string $role     Only users with this role on the current site.
 	 *     @type int    $user_id  Only this user.
+	 *     @type int[]  $user_ids Only these users. An empty array finds nothing.
 	 *     @type string $orderby  user, login, last_seen or expiration. Default last_seen.
 	 *     @type string $order    asc or desc. Default desc.
 	 *     @type int    $paged    Page, from 1.
@@ -404,6 +405,7 @@ final class Sessions implements Service {
 				'search'   => '',
 				'role'     => '',
 				'user_id'  => 0,
+				'user_ids' => null,
 				'orderby'  => 'last_seen',
 				'order'    => 'desc',
 				'paged'    => 1,
@@ -424,6 +426,22 @@ final class Sessions implements Service {
 		}
 		if ( (int) $args['user_id'] > 0 ) {
 			$user_args['include'] = array( (int) $args['user_id'] );
+		}
+		if ( is_array( $args['user_ids'] ) ) {
+			$only = array_map( 'intval', $args['user_ids'] );
+			if ( isset( $user_args['include'] ) ) {
+				$only = array_intersect( $only, $user_args['include'] );
+			}
+			$only = array_values( array_filter( $only ) );
+			if ( ! $only ) {
+				return array(
+					'total'     => 0,
+					'users'     => 0,
+					'rows'      => array(),
+					'truncated' => false,
+				);
+			}
+			$user_args['include'] = $only;
 		}
 
 		$rows    = array();

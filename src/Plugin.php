@@ -57,6 +57,13 @@ final class Plugin {
 	private NewDevice $devices;
 
 	/**
+	 * Shared login detection.
+	 *
+	 * @var SharedLogins
+	 */
+	private SharedLogins $shared;
+
+	/**
 	 * Starts the plugin. Runs on `plugins_loaded`.
 	 */
 	public static function boot(): void {
@@ -83,6 +90,7 @@ final class Plugin {
 		$this->sessions = new Sessions( $this->settings );
 		$this->pruner   = new Pruner( $this->settings, $this->sessions );
 		$this->devices  = new NewDevice( $this->settings, $this->sessions );
+		$this->shared   = new SharedLogins( $this->settings, $this->sessions );
 	}
 
 	/**
@@ -104,6 +112,15 @@ final class Plugin {
 	}
 
 	/**
+	 * Shared login detection, for other plugins.
+	 *
+	 * @return SharedLogins
+	 */
+	public function shared(): SharedLogins {
+		return $this->shared;
+	}
+
+	/**
 	 * Registers the services.
 	 */
 	private function register(): void {
@@ -112,14 +129,15 @@ final class Plugin {
 			new Activity( $this->settings, $this->sessions ),
 			new Limits( $this->settings, $this->sessions ),
 			$this->devices,
+			$this->shared,
 			$this->pruner,
-			new Privacy( $this->settings, $this->sessions, $this->devices ),
-			new ProfileSessions( $this->sessions ),
-			new SessionsPage( $this->sessions ),
+			new Privacy( $this->settings, $this->sessions, $this->devices, $this->shared ),
+			new ProfileSessions( $this->sessions, $this->shared ),
+			new SessionsPage( $this->sessions, $this->shared ),
 			new UsersColumn( $this->sessions ),
 			new SettingsPage( $this->settings ),
 			new SiteHealth( $this->settings, $this->sessions ),
-			new Abilities( $this->sessions ),
+			new Abilities( $this->sessions, $this->shared ),
 		);
 
 		foreach ( $services as $service ) {
@@ -127,7 +145,7 @@ final class Plugin {
 		}
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			\WP_CLI::add_command( 'user-session-manager', new Command( $this->settings, $this->sessions, $this->pruner ) );
+			\WP_CLI::add_command( 'user-session-manager', new Command( $this->settings, $this->sessions, $this->pruner, $this->shared ) );
 		}
 	}
 }

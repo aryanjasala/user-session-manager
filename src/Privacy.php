@@ -12,8 +12,8 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Sessions hold an IP address and a browser string, which are personal data.
  *
- * The exporter lists a user's sessions and remembered devices. The eraser signs
- * the user out everywhere and forgets their devices.
+ * The exporter lists a user's sessions, remembered devices and any shared login
+ * flag. The eraser signs the user out everywhere and forgets both.
  */
 final class Privacy implements Service {
 
@@ -41,16 +41,25 @@ final class Privacy implements Service {
 	private NewDevice $devices;
 
 	/**
+	 * Shared login flags.
+	 *
+	 * @var SharedLogins
+	 */
+	private SharedLogins $shared;
+
+	/**
 	 * Sets up the privacy tools.
 	 *
-	 * @param Settings  $settings Saved settings.
-	 * @param Sessions  $sessions Session store.
-	 * @param NewDevice $devices  Device memory.
+	 * @param Settings     $settings Saved settings.
+	 * @param Sessions     $sessions Session store.
+	 * @param NewDevice    $devices  Device memory.
+	 * @param SharedLogins $shared   Shared login flags.
 	 */
-	public function __construct( Settings $settings, Sessions $sessions, NewDevice $devices ) {
+	public function __construct( Settings $settings, Sessions $sessions, NewDevice $devices, SharedLogins $shared ) {
 		$this->settings = $settings;
 		$this->sessions = $sessions;
 		$this->devices  = $devices;
+		$this->shared   = $shared;
 	}
 
 	/**
@@ -156,6 +165,37 @@ final class Privacy implements Service {
 					),
 				);
 			}
+
+			$flag = $this->shared->get( $user->ID );
+			foreach ( $flag ? $flag['sessions'] : array() as $handle => $session ) {
+				$data[] = array(
+					'group_id'    => 'user-session-manager-shared',
+					'group_label' => __( 'Sessions that looked shared', 'user-session-manager' ),
+					'item_id'     => 'user-session-manager-shared-' . $handle,
+					'data'        => array(
+						array(
+							'name'  => __( 'Reason', 'user-session-manager' ),
+							'value' => implode( ' ', array_map( array( SharedLogins::class, 'evidence_text' ), $flag['evidence'] ) ),
+						),
+						array(
+							'name'  => __( 'Device', 'user-session-manager' ),
+							'value' => (string) ( $session['device'] ?? '' ),
+						),
+						array(
+							'name'  => __( 'IP address', 'user-session-manager' ),
+							'value' => (string) ( $session['ip'] ?? '' ),
+						),
+						array(
+							'name'  => __( 'Country', 'user-session-manager' ),
+							'value' => (string) ( $session['country'] ?? '' ),
+						),
+						array(
+							'name'  => __( 'Last active', 'user-session-manager' ),
+							'value' => ! empty( $session['last_seen'] ) ? wp_date( $format, (int) $session['last_seen'] ) : '',
+						),
+					),
+				);
+			}
 		}
 
 		return array(
@@ -179,7 +219,8 @@ final class Privacy implements Service {
 		if ( $user ) {
 			$ended   = $this->sessions->count( $user->ID ) > 0 ? $this->sessions->sign_out_everywhere( $user->ID, 'privacy' ) : 0;
 			$forgot  = $this->devices->forget( $user->ID );
-			$removed = $ended > 0 || $forgot;
+			$flagged = $this->shared->forget( $user->ID );
+			$removed = $ended > 0 || $forgot || $flagged;
 			if ( $ended > 0 ) {
 				$messages[] = sprintf(
 					/* translators: %d: number of sessions. */
@@ -210,10 +251,11 @@ final class Privacy implements Service {
 			: __( 'the IP address', 'user-session-manager' );
 
 		$text = sprintf(
-			/* translators: 1: "the IP address" or "a shortened IP address", 2: number of days. */
-			__( 'When you sign in, WordPress keeps a record of the session: %1$s and browser it came from, when it started, when it was last used and when it ends. The record is deleted when you sign out or the session ends. You can see your sessions on your profile and sign any of them out. If new sign-in emails are on, a scrambled fingerprint of each browser and IP address you sign in from is kept for %2$d days, so we can tell you about a sign-in from a new device.', 'user-session-manager' ),
+			/* translators: 1: "the IP address" or "a shortened IP address", 2: number of days, 3: number of days. */
+			__( 'When you sign in, WordPress keeps a record of the session: %1$s and browser it came from, when it started, when it was last used and when it ends. The record is deleted when you sign out or the session ends. You can see your sessions on your profile and sign any of them out. If new sign-in emails are on, a scrambled fingerprint of each browser and IP address you sign in from is kept for %2$d days, so we can tell you about a sign-in from a new device. If your sessions look like more than one person uses your account, for example two computers on different networks at the same time, a copy of those sessions (browser, IP address and times) is kept with the reason for %3$d days after the last time it happened.', 'user-session-manager' ),
 			$ip,
-			$this->settings->device_days()
+			$this->settings->device_days(),
+			SharedLoginDetector::RULES['keep_days']
 		);
 
 		wp_add_privacy_policy_content( __( 'User Session Manager', 'user-session-manager' ), '<p>' . esc_html( $text ) . '</p>' );

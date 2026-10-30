@@ -11,6 +11,7 @@ use AryanX\Axle\UserSessionManager\NewDevice;
 use AryanX\Axle\UserSessionManager\Privacy;
 use AryanX\Axle\UserSessionManager\Sessions;
 use AryanX\Axle\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\SharedLogins;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
@@ -176,7 +177,7 @@ final class NewDeviceTest extends SessionTestCase {
 		);
 		$settings = new Settings();
 		$sessions = new Sessions( $settings );
-		$privacy  = new Privacy( $settings, $sessions, new NewDevice( $settings, $sessions ) );
+		$privacy  = new Privacy( $settings, $sessions, new NewDevice( $settings, $sessions ), new SharedLogins( $settings, $sessions ) );
 
 		$export = $privacy->export( 'alice@example.com' );
 		$this->assertTrue( $export['done'] );

@@ -10,6 +10,7 @@ namespace AryanX\Axle\UserSessionManager\Admin;
 use AryanX\Axle\UserSessionManager\Access;
 use AryanX\Axle\UserSessionManager\Service;
 use AryanX\Axle\UserSessionManager\Sessions;
+use AryanX\Axle\UserSessionManager\SharedLogins;
 use const AryanX\Axle\UserSessionManager\PLUGIN_FILE;
 use const AryanX\Axle\UserSessionManager\VERSION;
 
@@ -31,12 +32,21 @@ final class SessionsPage implements Service {
 	private Sessions $sessions;
 
 	/**
+	 * Shared login detection.
+	 *
+	 * @var SharedLogins
+	 */
+	private SharedLogins $shared;
+
+	/**
 	 * Sets up the screen.
 	 *
-	 * @param Sessions $sessions Session store.
+	 * @param Sessions     $sessions Session store.
+	 * @param SharedLogins $shared   Shared login detection.
 	 */
-	public function __construct( Sessions $sessions ) {
+	public function __construct( Sessions $sessions, SharedLogins $shared ) {
 		$this->sessions = $sessions;
+		$this->shared   = $shared;
 	}
 
 	/**
@@ -206,7 +216,7 @@ final class SessionsPage implements Service {
 
 		// Keep the search, filter, sorting and page, drop the action.
 		$args = array();
-		foreach ( array( 's', 'role', 'user_id', 'orderby', 'order', 'paged' ) as $key ) {
+		foreach ( array( 's', 'role', 'user_id', 'shared', 'orderby', 'order', 'paged' ) as $key ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Checked above.
 			if ( isset( $_REQUEST[ $key ] ) && '' !== $_REQUEST[ $key ] ) {
 				// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Checked above.
@@ -379,11 +389,12 @@ final class SessionsPage implements Service {
 			return;
 		}
 
-		$table = new SessionsTable( $this->sessions );
+		$table = new SessionsTable( $this->sessions, $this->shared );
 		$table->prepare_items();
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only filter value.
 		$filtered_user = isset( $_REQUEST['user_id'] ) ? get_userdata( absint( $_REQUEST['user_id'] ) ) : false;
+		$flag          = $filtered_user ? $this->shared->get( $filtered_user->ID ) : null;
 		$total         = (int) $table->get_pagination_arg( 'total_items' );
 		?>
 		<div class="wrap usm-page">
@@ -417,6 +428,11 @@ final class SessionsPage implements Service {
 				}
 				?>
 			</p>
+			<?php if ( $flag ) : ?>
+				<?php echo wp_kses( Display::shared_evidence( $flag ), Display::ALLOWED ); ?>
+			<?php elseif ( $table->shared_view ) : ?>
+				<p class="usm-shared-intro"><?php esc_html_e( 'Accounts whose sessions look like more than one person. Choose "Only this user" on a row to see why.', 'user-session-manager' ); ?></p>
+			<?php endif; ?>
 			<?php if ( $table->truncated ) : ?>
 				<div class="notice notice-info inline"><p><?php esc_html_e( 'This site has more signed-in users than one listing reads. Filter by role or search to see the rest.', 'user-session-manager' ); ?></p></div>
 			<?php endif; ?>
@@ -426,7 +442,11 @@ final class SessionsPage implements Service {
 				<?php if ( $filtered_user ) : ?>
 					<input type="hidden" name="user_id" value="<?php echo esc_attr( (string) $filtered_user->ID ); ?>">
 				<?php endif; ?>
+				<?php if ( $table->shared_view ) : ?>
+					<input type="hidden" name="shared" value="1">
+				<?php endif; ?>
 				<?php
+				$table->views();
 				$table->search_box( __( 'Search sessions', 'user-session-manager' ), 'usm-search' );
 				$table->display();
 				?>
@@ -450,7 +470,7 @@ final class SessionsPage implements Service {
 		$single = 1 === count( $users ) ? get_userdata( $users[0] ) : false;
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only list arguments carried through the form.
 		$keep = array();
-		foreach ( array( 's', 'role', 'user_id', 'orderby', 'order', 'paged' ) as $key ) {
+		foreach ( array( 's', 'role', 'user_id', 'shared', 'orderby', 'order', 'paged' ) as $key ) {
 			if ( isset( $_REQUEST[ $key ] ) && '' !== $_REQUEST[ $key ] && ! is_array( $_REQUEST[ $key ] ) ) {
 				$keep[ $key ] = sanitize_text_field( wp_unslash( $_REQUEST[ $key ] ) );
 			}
