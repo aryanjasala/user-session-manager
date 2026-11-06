@@ -105,7 +105,7 @@ final class Display {
 			esc_attr( $icons[ $type ] ),
 			esc_attr( $row['ua'] ),
 			esc_html( $row['device'] ),
-			$row['current'] ? ' <span class="usm-badge">' . esc_html__( 'This device', 'user-session-manager' ) . '</span>' : '',
+			$row['current'] ? ' <span class="usm-badge axle-badge axle-badge--info">' . esc_html__( 'This device', 'user-session-manager' ) . '</span>' : '',
 			$shared ? ' ' . self::shared_badge() : '',
 			esc_html( $types[ $type ] )
 		);
@@ -117,7 +117,7 @@ final class Display {
 	 * @return string HTML.
 	 */
 	public static function shared_badge(): string {
-		return '<span class="usm-badge usm-badge-shared">' . esc_html__( 'Possibly shared', 'user-session-manager' ) . '</span>';
+		return '<span class="usm-badge usm-badge-shared axle-badge axle-badge--warning">' . esc_html__( 'Possibly shared', 'user-session-manager' ) . '</span>';
 	}
 
 	/**

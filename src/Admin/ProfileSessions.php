@@ -74,7 +74,8 @@ final class ProfileSessions implements Service {
 			return;
 		}
 
-		wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array(), VERSION );
+		AxleUi::enqueue();
+		wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array( AxleUi::HANDLE ), VERSION );
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- The user being edited, read-only.
 		$user_id = 'profile.php' === $hook_suffix ? get_current_user_id() : ( isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : 0 );
@@ -157,7 +158,7 @@ final class ProfileSessions implements Service {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only shows the question; the sign out itself has a nonce.
 		$confirm = isset( $_GET['usm_confirm'] ) && 'sign_out' === sanitize_key( wp_unslash( $_GET['usm_confirm'] ) );
 		?>
-		<div class="usm-profile">
+		<div class="usm-profile axle-ui">
 		<h2 id="<?php echo esc_attr( self::ANCHOR ); ?>"><?php echo $own ? esc_html__( 'Your sessions', 'user-session-manager' ) : esc_html__( 'Sessions', 'user-session-manager' ); ?></h2>
 		<?php if ( ! $this->sessions->is_supported() ) : ?>
 			<p><?php esc_html_e( 'Another plugin stores sessions outside WordPress user data, so they cannot be listed here.', 'user-session-manager' ); ?></p>
@@ -177,7 +178,7 @@ final class ProfileSessions implements Service {
 			<?php echo wp_kses( Display::shared_evidence( $flag ), Display::ALLOWED ); ?>
 		<?php endif; ?>
 		<?php if ( ! $rows ) : ?>
-			<p class="usm-empty"><?php esc_html_e( 'No active sessions.', 'user-session-manager' ); ?></p>
+			<div class="axle-empty usm-empty"><p><?php esc_html_e( 'No active sessions. Sessions show up here when this account signs in.', 'user-session-manager' ); ?></p></div>
 		<?php else : ?>
 			<table class="widefat striped usm-sessions">
 				<thead>
@@ -218,16 +219,17 @@ final class ProfileSessions implements Service {
 				<?php endif; ?>
 			</p>
 			<?php if ( ! $own && $confirm ) : ?>
-				<div class="usm-confirm usm-confirm-inline" role="group" aria-labelledby="usm-confirm-title">
-					<p id="usm-confirm-title"><strong>
+				<div class="axle-card axle-card--danger usm-confirm usm-confirm-inline" role="group" aria-labelledby="usm-confirm-title">
+					<p class="axle-card__title" id="usm-confirm-title">
 						<?php
 						/* translators: %s: user login. */
 						echo esc_html( sprintf( __( 'Sign out %s everywhere?', 'user-session-manager' ), $user->user_login ) );
 						?>
-					</strong></p>
+					</p>
 					<p><?php echo wp_kses_post( SessionsPage::confirm_message( array( $user->ID ), count( $rows ), false ) ); ?></p>
+					<p><?php esc_html_e( 'Signing out cannot be undone. The person can sign in again with their password.', 'user-session-manager' ); ?></p>
 					<p class="usm-confirm-actions">
-						<a class="button button-primary" href="<?php echo esc_url( self::url( 'sign_out', (string) $user->ID, $back ) ); ?>"><?php esc_html_e( 'Sign out everywhere', 'user-session-manager' ); ?></a>
+						<a class="button axle-button--danger" href="<?php echo esc_url( self::url( 'sign_out', (string) $user->ID, $back ) ); ?>"><?php esc_html_e( 'Sign out everywhere', 'user-session-manager' ); ?></a>
 						<a class="button-link" href="<?php echo esc_url( $back . '#' . self::ANCHOR ); ?>"><?php esc_html_e( 'Cancel', 'user-session-manager' ); ?></a>
 					</p>
 				</div>

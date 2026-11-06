@@ -1,4 +1,5 @@
-/* User Session Manager: profile section, Users > Sessions and the settings screen. */
+/* User Session Manager: profile section, Users > Sessions and the settings screen.
+   Layout only: the look comes from axle-ui.css. Prefix: usm- */
 .usm-sessions {
 	max-width: 1100px;
 	margin-top: 8px;
@@ -12,38 +13,30 @@
 .usm-device {
 	display: inline-flex;
 	align-items: center;
-	gap: 10px;
+	gap: 8px;
 }
 
 .usm-device .dashicons {
 	width: 28px;
 	height: 28px;
 	font-size: 28px;
-	color: #50575e;
+	color: var(--axle-muted);
 }
 
 .usm-device small,
 .usm-user small {
-	color: #646970;
+	color: var(--axle-muted);
 }
 
 .usm-badge {
-	display: inline-block;
-	margin-left: 6px;
-	padding: 1px 8px;
-	border-radius: 10px;
-	background: #c5207a;
-	color: #fff;
-	font-size: 11px;
-	font-weight: 600;
-	line-height: 18px;
+	margin-left: 4px;
 	vertical-align: middle;
 }
 
 .usm-sessions .usm-session.is-current > td,
 .usm-page .wp-list-table .usm-session.is-current > th,
 .usm-page .wp-list-table .usm-session.is-current > td {
-	background: #fcf0f6;
+	background: var(--axle-info-bg);
 }
 
 .usm-page .wp-list-table .column-user {
@@ -65,24 +58,16 @@
 .usm-user {
 	display: inline-flex;
 	align-items: center;
-	gap: 10px;
+	gap: 8px;
 }
 
 .usm-user img {
 	border-radius: 50%;
 }
 
-.usm-page .row-actions .usm-danger {
-	color: #b32d2e;
-}
-
-.usm-summary {
-	color: #50575e;
-}
-
 .usm-policies {
 	max-width: 1000px;
-	margin-top: 12px;
+	margin-top: 8px;
 }
 
 .usm-policies th[scope="row"] {
@@ -93,32 +78,21 @@
 .usm-bulk {
 	display: flex;
 	align-items: center;
-	gap: 14px;
+	gap: 16px;
 }
 
 .usm-profile {
 	margin: 24px 0;
 }
 
-.usm-danger-button.button {
-	border-color: #b32d2e;
-	color: #b32d2e;
-}
-
-.usm-danger-button.button:hover,
-.usm-danger-button.button:focus {
-	border-color: #8a2424;
-	color: #8a2424;
+.usm-profile .usm-empty,
+.usm-profile .usm-confirm {
+	max-width: 760px;
 }
 
 /* The question before a sign out everywhere. */
 .usm-confirm {
 	max-width: 760px;
-	margin: 16px 0;
-	padding: 4px 16px 8px;
-	border-left: 4px solid #d63638;
-	background: #fff;
-	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
 }
 
 .usm-confirm-users {
@@ -130,17 +104,13 @@
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 10px;
+	gap: 8px;
 }
 
-/* Shared login detection: the badge and the evidence. */
-.usm-badge-shared {
-	background: #7a4f00;
-}
-
+/* Shared login detection: the evidence. */
 .usm-shared.notice {
 	max-width: 1100px;
-	margin: 12px 0;
+	margin: 8px 0 16px;
 }
 
 .usm-shared-evidence {
@@ -149,13 +119,13 @@
 }
 
 .usm-shared-sessions {
-	margin: 4px 0 6px 1.5em;
+	margin: 4px 0 8px 1.5em;
 	list-style: circle;
 }
 
 .usm-shared-help {
 	max-width: 1000px;
-	margin-top: 10px;
+	margin-top: 8px;
 }
 
 /* Small screens: one card per session and per role, labels beside the values. */
@@ -191,13 +161,13 @@
 		justify-content: space-between;
 		align-items: center;
 		gap: 12px;
-		padding: 4px 10px;
+		padding: 4px 8px;
 	}
 
 	.usm-sessions td[data-colname]::before,
 	.usm-policies td[data-colname]::before {
 		content: attr(data-colname);
-		color: #50575e;
+		color: var(--axle-muted);
 		font-weight: 600;
 	}
 
@@ -209,4 +179,10 @@
 	.usm-page .wp-list-table .column-device {
 		width: auto;
 	}
+}
+
+/* Until axle-ui.css does it: the danger button text, #d63638, is 4.4:1 on core's button background in WordPress 6.x. */
+.usm-page .button.axle-button--danger,
+.usm-profile .button.axle-button--danger {
+	color: var(--axle-error-text);
 }
