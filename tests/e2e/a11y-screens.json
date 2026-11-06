@@ -42,6 +42,16 @@
       "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
     },
     {
+      "name": "Users > Sessions, nobody matches the filter",
+      "setup": [
+        { "js": "seed.js", "call": "createPeople" },
+        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+      ],
+      "url": "/wp-admin/users.php?page=user-sessions&user_id={maria}",
+      "steps": [{ "waitFor": ".axle-empty" }],
+      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+    },
+    {
       "name": "Users > Sessions, confirming a sign out everywhere",
       "setup": [
         { "js": "seed.js", "call": "createPeople" },

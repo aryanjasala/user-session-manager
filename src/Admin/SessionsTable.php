@@ -221,7 +221,7 @@ final class SessionsTable extends \WP_List_Table {
 	 * Text when there is nothing to list.
 	 */
 	public function no_items(): void {
-		esc_html_e( 'No active sessions found.', 'user-session-manager' );
+		echo '<div class="axle-empty"><p>' . esc_html__( 'No active sessions found. Sessions show up here when someone signs in, and disappear when they sign out or expire.', 'user-session-manager' ) . '</p></div>';
 	}
 
 	/**
@@ -314,8 +314,8 @@ final class SessionsTable extends \WP_List_Table {
 		}
 		if ( Access::can_manage( $user->ID ) ) {
 			// Both ask first. On your own row the default keeps this browser signed in.
-			$actions['sign_out'] = sprintf(
-				'<a href="%1$s" class="usm-danger">%2$s</a>',
+			$actions['delete'] = sprintf(
+				'<a href="%1$s">%2$s</a>',
 				esc_url( SessionsPage::confirm_url( $user->ID ) ),
 				get_current_user_id() === $user->ID ? esc_html__( 'Sign out everywhere else', 'user-session-manager' ) : esc_html__( 'Sign out everywhere', 'user-session-manager' )
 			);
