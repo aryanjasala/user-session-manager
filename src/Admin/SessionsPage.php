@@ -131,7 +131,8 @@ final class SessionsPage implements Service {
 	 * Screen styles.
 	 */
 	public function enqueue_styles(): void {
-		wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array(), VERSION );
+		AxleUi::enqueue();
+		wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array( AxleUi::HANDLE ), VERSION );
 	}
 
 	/**
@@ -397,18 +398,20 @@ final class SessionsPage implements Service {
 		$flag          = $filtered_user ? $this->shared->get( $filtered_user->ID ) : null;
 		$total         = (int) $table->get_pagination_arg( 'total_items' );
 		?>
-		<div class="wrap usm-page">
+		<div class="wrap axle-ui usm-page">
 			<h1 class="wp-heading-inline"><?php esc_html_e( 'Sessions', 'user-session-manager' ); ?></h1>
 			<?php if ( current_user_can( Access::settings_capability() ) ) : ?>
 				<a href="<?php echo esc_url( SettingsPage::url() ); ?>" class="page-title-action"><?php esc_html_e( 'Session policies', 'user-session-manager' ); ?></a>
 			<?php endif; ?>
 			<hr class="wp-header-end">
 
+			<p class="axle-intro"><?php esc_html_e( 'Every browser signed in to this site, with the person, the device and the network. Sign sessions out one at a time, or sign a person out everywhere.', 'user-session-manager' ); ?></p>
+
 			<?php if ( ! $this->sessions->is_supported() ) : ?>
 				<div class="notice notice-warning inline"><p><?php esc_html_e( 'Another plugin stores sessions outside WordPress user data, so User Session Manager cannot list or end them.', 'user-session-manager' ); ?></p></div>
 			<?php endif; ?>
 
-			<p class="usm-summary">
+			<p class="usm-summary axle-muted">
 				<?php
 				echo esc_html(
 					sprintf(
@@ -451,6 +454,7 @@ final class SessionsPage implements Service {
 				$table->display();
 				?>
 			</form>
+			<?php AxleUi::footer(); ?>
 		</div>
 		<?php
 	}
@@ -488,15 +492,18 @@ final class SessionsPage implements Service {
 			$title = sprintf( _n( 'Sign out %s user everywhere?', 'Sign out %s users everywhere?', count( $users ), 'user-session-manager' ), number_format_i18n( count( $users ) ) );
 		}
 		?>
-		<div class="wrap usm-page">
-			<h1><?php esc_html_e( 'Sessions', 'user-session-manager' ); ?></h1>
+		<div class="wrap axle-ui usm-page">
+			<h1 class="wp-heading-inline"><?php esc_html_e( 'Sessions', 'user-session-manager' ); ?></h1>
+			<hr class="wp-header-end">
+			<p class="axle-intro"><?php esc_html_e( 'Check who will be signed out before you confirm. Nothing ends until you do.', 'user-session-manager' ); ?></p>
 			<?php if ( ! $users ) : ?>
 				<div class="notice notice-warning inline"><p><?php esc_html_e( 'None of the chosen users can be signed out from here.', 'user-session-manager' ); ?></p></div>
 				<p><a class="button" href="<?php echo esc_url( $cancel ); ?>"><?php esc_html_e( 'Back to sessions', 'user-session-manager' ); ?></a></p>
 			<?php else : ?>
-				<form method="post" action="<?php echo esc_url( self::url() ); ?>" class="usm-confirm">
-					<h2 id="usm-confirm-title"><?php echo esc_html( $title ); ?></h2>
+				<form method="post" action="<?php echo esc_url( self::url() ); ?>" class="axle-card axle-card--danger usm-confirm">
+					<h2 class="axle-card__title" id="usm-confirm-title"><?php echo esc_html( $title ); ?></h2>
 					<p><?php echo wp_kses_post( self::confirm_message( $users, $sessions, $self ) ); ?></p>
+					<p><?php esc_html_e( 'Signing out cannot be undone. Each person can sign in again with their password.', 'user-session-manager' ); ?></p>
 					<?php if ( ! $single ) : ?>
 						<ul class="usm-confirm-users">
 							<?php foreach ( array_slice( $users, 0, 20 ) as $user_id ) : ?>
@@ -529,14 +536,15 @@ final class SessionsPage implements Service {
 					<p class="usm-confirm-actions">
 						<?php if ( $self ) : ?>
 							<button type="submit" name="usm_scope" value="others" class="button button-primary"><?php echo $single ? esc_html__( 'Sign out everywhere else', 'user-session-manager' ) : esc_html__( 'Sign out, but keep this browser', 'user-session-manager' ); ?></button>
-							<button type="submit" name="usm_scope" value="all" class="button usm-danger-button"><?php esc_html_e( 'Sign out everywhere, this browser too', 'user-session-manager' ); ?></button>
+							<button type="submit" name="usm_scope" value="all" class="button axle-button--danger"><?php esc_html_e( 'Sign out everywhere, this browser too', 'user-session-manager' ); ?></button>
 						<?php else : ?>
-							<button type="submit" name="usm_scope" value="all" class="button button-primary"><?php esc_html_e( 'Sign out everywhere', 'user-session-manager' ); ?></button>
+							<button type="submit" name="usm_scope" value="all" class="button axle-button--danger"><?php esc_html_e( 'Sign out everywhere', 'user-session-manager' ); ?></button>
 						<?php endif; ?>
 						<a class="button-link" href="<?php echo esc_url( $cancel ); ?>"><?php esc_html_e( 'Cancel', 'user-session-manager' ); ?></a>
 					</p>
 				</form>
 			<?php endif; ?>
+			<?php AxleUi::footer(); ?>
 		</div>
 		<?php
 	}
