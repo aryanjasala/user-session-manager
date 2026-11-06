@@ -232,9 +232,10 @@
 
 /* Buttons and code */
 
+/* #b32d2e is core's delete-link red: 4.5:1 or better on button backgrounds. */
 .axle-ui .button.axle-button--danger {
-	color: var(--axle-error-line);
-	border-color: var(--axle-error-line);
+	color: #b32d2e;
+	border-color: #b32d2e;
 }
 
 .axle-ui .button.axle-button--danger:hover,
