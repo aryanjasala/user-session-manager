@@ -180,3 +180,9 @@
 		width: auto;
 	}
 }
+
+/* Until axle-ui.css does it: the danger button text, #d63638, is 4.4:1 on core's button background in WordPress 6.x. */
+.usm-page .button.axle-button--danger,
+.usm-profile .button.axle-button--danger {
+	color: var(--axle-error-text);
+}
