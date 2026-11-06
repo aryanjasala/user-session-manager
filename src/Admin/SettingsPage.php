@@ -84,7 +84,8 @@ final class SettingsPage implements Service {
 	 * Screen styles.
 	 */
 	public function enqueue_styles(): void {
-		wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array(), VERSION );
+		AxleUi::enqueue();
+		wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array( AxleUi::HANDLE ), VERSION );
 	}
 
 	/**
@@ -110,12 +111,14 @@ final class SettingsPage implements Service {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display-only value set by our own redirect.
 		$saved = isset( $_GET['usm_saved'] );
 		?>
-		<div class="wrap usm-page usm-settings">
+		<div class="wrap axle-ui usm-page usm-settings">
 			<h1 class="wp-heading-inline"><?php esc_html_e( 'User Sessions', 'user-session-manager' ); ?></h1>
 			<?php if ( Access::can_view_all() ) : ?>
 				<a href="<?php echo esc_url( SessionsPage::url() ); ?>" class="page-title-action"><?php esc_html_e( 'See all sessions', 'user-session-manager' ); ?></a>
 			<?php endif; ?>
 			<hr class="wp-header-end">
+
+			<p class="axle-intro"><?php esc_html_e( 'Set how many sessions each role may have and how long they last, and choose what happens when an account looks shared.', 'user-session-manager' ); ?></p>
 
 			<?php if ( $saved ) : ?>
 				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Settings saved.', 'user-session-manager' ); ?></p></div>
@@ -125,7 +128,8 @@ final class SettingsPage implements Service {
 				<?php wp_nonce_field( self::ACTION ); ?>
 				<input type="hidden" name="action" value="<?php echo esc_attr( self::ACTION ); ?>">
 
-				<h2><?php esc_html_e( 'Policies per role', 'user-session-manager' ); ?></h2>
+				<section class="axle-card">
+				<h2 class="axle-card__title"><?php esc_html_e( 'Policies per role', 'user-session-manager' ); ?></h2>
 				<p class="description">
 					<?php
 					esc_html_e( 'Leave a field at 0 for no limit, or for the WordPress default session length (2 days, 14 with "Remember Me"). A user with several roles gets the most generous value of each. Users with no role on this site have no limits.', 'user-session-manager' );
@@ -168,7 +172,10 @@ final class SettingsPage implements Service {
 				<p class="description usm-shared-help">
 					<?php esc_html_e( '"Account looks shared" decides what happens when the sessions of an account look like more than one person: more than two networks at the same time, two computers or two phones on different networks at the same time, or more than four devices in a day. The account always gets a "Possibly shared" badge with the reasons. A login is never refused on this guess. Choose "Do not check" for accounts that are meant to be shared, such as a kiosk.', 'user-session-manager' ); ?>
 				</p>
+				</section>
 
+				<section class="axle-card">
+				<h2 class="axle-card__title"><?php esc_html_e( 'Limits, emails and privacy', 'user-session-manager' ); ?></h2>
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Over the limit', 'user-session-manager' ); ?></th>
@@ -201,8 +208,10 @@ final class SettingsPage implements Service {
 						</td>
 					</tr>
 				</table>
+				</section>
 				<?php submit_button( __( 'Save settings', 'user-session-manager' ) ); ?>
 			</form>
+			<?php AxleUi::footer(); ?>
 		</div>
 		<?php
 	}
