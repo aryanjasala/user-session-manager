@@ -1,4 +1,5 @@
-const { test, expect, wp, wpEval, logInAs } = require( './utils' );
+const { test, expect, wp, wpEval, logIn, logInAs } = require( './utils' );
+const { PASSWORD: ADMIN_PASSWORD } = require( './utils/config' );
 
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 const FIREFOX = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0';
@@ -49,6 +50,18 @@ async function signIn( browser, login, userAgent, ip = '' ) {
 }
 
 /**
+ * Answers the in-place confirm step (.axle-confirm) that a destructive link opens.
+ *
+ * @param {import('@playwright/test').Page} page  Page.
+ * @param {string}                           label Name of the confirming link.
+ */
+async function confirmInPlace( page, label ) {
+	const box = page.locator( '.usm-confirm-box' );
+	await expect( box ).toBeVisible();
+	await box.getByRole( 'link', { name: label } ).click();
+}
+
+/**
  * Whether a context is still signed in.
  *
  * @param {import('@playwright/test').Page} page Page of the context.
@@ -87,7 +100,13 @@ test.describe( 'User Session Manager', () => {
 				delete_user_meta( $user->ID, 'session_tokens' );
 				delete_user_meta( $user->ID, 'user_session_manager_devices' );
 				delete_user_meta( $user->ID, 'user_session_manager_shared' );
-			}` );
+				delete_user_meta( $user->ID, 'user_session_manager_history' );
+				delete_user_meta( $user->ID, 'user_session_manager_not_me' );
+			}
+			delete_option( 'user_session_manager_not_me_events' ); delete_option( 'user_session_manager_incidents' );
+			delete_user_meta( 1, 'user_session_manager_hide_steps' );
+			foreach ( array( 'alice', 'bob', 'sam', 'carol' ) as $login ) { wp_set_password( 'e2e-password-123', get_user_by( 'login', $login )->ID ); }
+			global $wpdb; $wpdb->query( "DELETE FROM $wpdb->options WHERE option_name LIKE '%usm_nm_%'" );` );
 	} );
 
 	test.afterEach( async () => {
@@ -129,6 +148,12 @@ test.describe( 'User Session Manager', () => {
 		}
 
 		await other.getByRole( 'link', { name: 'Sign out' } ).click();
+		// It asks in place first, and Cancel changes nothing.
+		await expect( laptop.page.locator( '.usm-confirm-box' ) ).toContainText( 'cannot be undone' );
+		await laptop.page.locator( '.usm-confirm-box' ).getByRole( 'button', { name: 'Cancel' } ).click();
+		expect( sessions( 'alice' ) ).toHaveLength( 2 );
+		await other.getByRole( 'link', { name: 'Sign out' } ).click();
+		await confirmInPlace( laptop.page, 'Sign out this session' );
 		await expect( laptop.page.locator( '.usm-notice' ) ).toContainText( 'Session signed out.' );
 		await expect( section.locator( '.usm-session' ) ).toHaveCount( 1 );
 
@@ -155,6 +180,7 @@ test.describe( 'User Session Manager', () => {
 
 		await laptop.page.reload();
 		await laptop.page.getByRole( 'link', { name: 'Sign out all other sessions' } ).click();
+		await confirmInPlace( laptop.page, 'Sign out all other sessions' );
 		await expect( laptop.page.locator( '.usm-notice' ) ).toContainText( 'Signed out 2 other sessions.' );
 		expect( sessions( 'alice' ).map( ( s ) => s.ua ) ).toEqual( [ CHROME ] );
 		expect( await signedIn( phone.page ) ).toBe( false );
@@ -200,6 +226,7 @@ test.describe( 'User Session Manager', () => {
 		const iphoneRow = page.locator( 'tbody .usm-session', { hasText: 'Safari on iOS' } );
 		await iphoneRow.hover();
 		await iphoneRow.getByRole( 'link', { name: 'Sign out', exact: true } ).click();
+		await confirmInPlace( page, 'Sign out this session' );
 		await expect( page.locator( '.usm-notice' ) ).toContainText( 'Session signed out.' );
 		expect( sessions( 'alice' ).map( ( s ) => s.ua ) ).toEqual( [ FIREFOX ] );
 
@@ -292,7 +319,7 @@ test.describe( 'User Session Manager', () => {
 		const phone = await open( browser, 'carol', IPHONE );
 		await open( browser, 'carol', FIREFOX );
 		await phone.page.setViewportSize( { width: 375, height: 800 } );
-		for ( const url of [ SETTINGS, '/wp-admin/profile.php', `${ SESSIONS }&user_id=${ id( 'carol' ) }` ] ) {
+		for ( const url of [ SETTINGS, '/wp-admin/profile.php', `${ SESSIONS }&usm_incident=1`, `/wp-admin/user-edit.php?user_id=${ id( 'carol' ) }#usm-history`, `${ SESSIONS }&user_id=${ id( 'carol' ) }` ] ) {
 			await phone.page.goto( url );
 			expect( await phone.page.evaluate( () => document.documentElement.scrollWidth ), url ).toBeLessThanOrEqual( 375 );
 		}
@@ -347,7 +374,7 @@ test.describe( 'User Session Manager', () => {
 		expect( await signedIn( phone.page ) ).toBe( false );
 		expect( sessions( 'alice' ).map( ( s ) => s.ua ) ).toEqual( [ FIREFOX ] );
 
-		expect( wp( 'user-session-manager', 'prune' ) ).toContain( 'Removed 0 expired and 1 idle sessions.' );
+		expect( wp( 'user-session-manager', 'prune' ) ).toContain( 'Removed 0 expired and 1 idle sessions' );
 		expect( sessions( 'alice' ) ).toHaveLength( 0 );
 	} );
 
@@ -410,8 +437,9 @@ test.describe( 'User Session Manager', () => {
 			);
 
 		const exported = privacy( 'exporter' );
-		expect( exported.data ).toHaveLength( 2 );
-		const devices = exported.data.map( ( item ) => item.data.find( ( field ) => field.name === 'Device' ).value ).sort();
+		const sessionItems = exported.data.filter( ( item ) => item.group_id === 'user-session-manager-sessions' );
+		expect( sessionItems ).toHaveLength( 2 );
+		const devices = sessionItems.map( ( item ) => item.data.find( ( field ) => field.name === 'Device' ).value ).sort();
 		expect( devices ).toEqual( [ 'Firefox on Windows', 'Safari on iOS' ] );
 
 		expect( privacy( 'eraser' ) ).toMatchObject( { items_removed: true, done: true, messages: [ 'Signed the user out of 2 sessions.' ] } );
@@ -461,7 +489,15 @@ test.describe( 'User Session Manager', () => {
 		const path = ( name ) => `/wp-abilities/v1/abilities/user-session-manager/${ name }/run`;
 
 		const listed = await rest( 'GET', '/wp-abilities/v1/abilities?category=user-session-manager' );
-		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'user-session-manager/list-sessions', 'user-session-manager/list-shared-logins', 'user-session-manager/revoke-session', 'user-session-manager/sign-out-user' ] );
+		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [
+			'user-session-manager/list-not-me-reports',
+			'user-session-manager/list-sessions',
+			'user-session-manager/list-shared-logins',
+			'user-session-manager/list-sign-in-history',
+			'user-session-manager/revoke-session',
+			'user-session-manager/sign-out-everyone',
+			'user-session-manager/sign-out-user',
+		] );
 		// MCP clients only list abilities marked public.
 		expect( JSON.parse( wpEval( `echo wp_json_encode( array_values( array_filter( array_map( function ( $ability ) { $meta = $ability->get_meta(); return ( ! empty( $meta['public'] ) && ! empty( $meta['mcp']['public'] ) ) ? '' : $ability->get_name(); }, wp_get_abilities() ), function ( $name ) { return 0 === strpos( $name, 'user-session-manager/' ); } ) ) );` ) ) ).toEqual( [] );
 
@@ -634,5 +670,303 @@ test.describe( 'User Session Manager', () => {
 			call_user_func( $tools['user-session-manager']['callback'], 'alice@example.com', 1 );` );
 		expect( flag( 'alice' ) ).toBeNull();
 		expect( shared() ).toEqual( [] );
+	} );
+	test( '"This wasn\'t me": the email link signs the account out, retires the password and tells the administrator', async ( { page, browser } ) => {
+		wp( 'user-session-manager', 'settings', '--new-device-email=on' );
+		await open( browser, 'alice', CHROME );
+		await open( browser, 'alice', IPHONE, '198.51.100.20' );
+		const sent = mail();
+		expect( sent ).toHaveLength( 1 );
+		expect( sent[ 0 ].message ).toContain( 'Nothing happens until you confirm' );
+		const link = sent[ 0 ].message.match( /http\S*user_session_manager_not_me\S*/ )[ 0 ];
+
+		// Opening the link, as a mail scanner does, shows a page and changes nothing. No login is needed.
+		const visitor = await browser.newContext( { storageState: { cookies: [], origins: [] } } );
+		contexts.push( visitor );
+		const tab = await visitor.newPage();
+		const response = await tab.goto( link );
+		expect( response.status() ).toBe( 200 );
+		await expect( tab.getByRole( 'button', { name: 'This wasn\'t me, secure the account' } ) ).toBeVisible();
+		await expect( tab.locator( 'body' ) ).toContainText( 'Safari on iOS' );
+		await expect( tab.locator( 'body' ) ).not.toContainText( 'alice' );
+		expect( sessions( 'alice' ) ).toHaveLength( 2 );
+		expect( mail() ).toHaveLength( 1 );
+
+		await tab.getByRole( 'button', { name: 'This wasn\'t me, secure the account' } ).click();
+		await expect( tab.locator( 'body' ) ).toContainText( 'The account is safe' );
+		expect( sessions( 'alice' ) ).toHaveLength( 0 );
+
+		// The old password no longer works.
+		const refused = await logInAs( browser, 'alice', PASSWORD );
+		contexts.push( refused.context );
+		await expect( refused.page.locator( '#login_error' ) ).toBeVisible();
+
+		// A reset link went to the account, and the site administrator was told.
+		const all = mail();
+		expect( all ).toHaveLength( 3 );
+		expect( all[ 1 ].to ).toBe( 'alice@example.com' );
+		expect( all[ 1 ].message ).toMatch( /wp-login\.php\?action=rp&key=\S+&login=alice/ );
+		const adminEmail = wpEval( "echo get_option( 'admin_email' );" );
+		expect( [].concat( all[ 2 ].to ) ).toEqual( [ adminEmail ] );
+		expect( all[ 2 ].message ).toContain( 'alice' );
+
+		// Single use, and a wrong key looks exactly the same.
+		const again = await tab.goto( link );
+		expect( again.status() ).toBe( 404 );
+		await expect( tab.locator( 'body' ) ).toContainText( 'This link no longer works' );
+		const wrong = await tab.goto( link.replace( /usm_key=(\d+)\.[0-9a-f]+/, 'usm_key=$1.' + 'a'.repeat( 48 ) ) );
+		expect( wrong.status() ).toBe( 404 );
+		await expect( tab.locator( 'body' ) ).toContainText( 'This link no longer works' );
+
+		// The event shows on the profile, on Users > Sessions, in WP-CLI and in the history.
+		await page.goto( `/wp-admin/user-edit.php?user_id=${ id( 'alice' ) }` );
+		await expect( page.locator( '.usm-report' ) ).toContainText( 'This wasn\'t me' );
+		await expect( page.locator( '.usm-report' ) ).toContainText( 'Safari on iOS' );
+		await expect( page.locator( '.usm-history-row' ).first() ).toContainText( 'Reported as "This wasn\'t me"' );
+		await page.goto( SESSIONS );
+		await expect( page.locator( '.usm-reports' ) ).toContainText( 'alice' );
+		const reports = JSON.parse( wp( 'user-session-manager', 'reports', '--format=json' ) );
+		expect( reports ).toHaveLength( 1 );
+		expect( reports[ 0 ] ).toMatchObject( { user: 'alice', device: 'Safari on iOS', scope: 'all', ended: 2 } );
+		const history = JSON.parse( wp( 'user-session-manager', 'history', 'alice', '--format=json' ) );
+		expect( history.map( ( row ) => row.reason ) ).toEqual( [ 'not_me', 'not_me' ] );
+	} );
+
+	test( '"This wasn\'t me" can be limited to one session, turned off, and rate limited', async ( { request, browser } ) => {
+		wp( 'user-session-manager', 'settings', '--new-device-email=on', '--not-me-scope=session' );
+		await open( browser, 'alice', CHROME );
+		await open( browser, 'alice', IPHONE, '198.51.100.20' );
+		const link = mail()[ 0 ].message.match( /http\S*user_session_manager_not_me\S*/ )[ 0 ];
+		const visitor = await browser.newContext( { storageState: { cookies: [], origins: [] } } );
+		contexts.push( visitor );
+		const tab = await visitor.newPage();
+		await tab.goto( link );
+		await tab.getByRole( 'button', { name: 'This wasn\'t me, secure the account' } ).click();
+		expect( sessions( 'alice' ).map( ( s ) => s.device ) ).toEqual( [ 'Chrome on macOS' ] );
+
+		// Off: no link in new emails, and a link already sent stops working.
+		wp( 'user-session-manager', 'settings', '--not-me=off', '--not-me-scope=all' );
+		await open( browser, 'alice', FIREFOX, '198.51.100.30' );
+		expect( mail().pop().message ).not.toContain( 'user_session_manager_not_me' );
+
+		// Too many wrong keys from one address slow down.
+		const bad = '/wp-login.php?action=user_session_manager_not_me&usm_key=3.' + 'b'.repeat( 48 );
+		for ( let i = 0; i < 10; i++ ) {
+			expect( ( await request.get( bad ) ).status() ).toBe( 404 );
+		}
+		expect( ( await request.get( bad ) ).status() ).toBe( 429 );
+	} );
+
+	test( 'sign-in history shows how sessions ended, and the login screen says why you were signed out', async ( { page, browser } ) => {
+		wp( 'user-session-manager', 'set-policy', 'author', '--max-sessions=1' );
+		const phone = await open( browser, 'alice', IPHONE );
+		const laptop = await open( browser, 'alice', FIREFOX );
+
+		// The phone was signed out to make room: its next request says so, once, and only to the browser that held the session.
+		await phone.page.goto( '/wp-admin/profile.php' );
+		await expect( phone.page ).toHaveURL( /wp-login\.php/ );
+		await expect( phone.page.locator( '.message' ) ).toContainText( 'You were signed out because this account signed in on another device, at' );
+		await phone.page.goto( '/wp-login.php' );
+		await expect( phone.page.locator( '.message' ) ).toHaveCount( 0 );
+		const stranger = await browser.newContext( { storageState: { cookies: [], origins: [] } } );
+		contexts.push( stranger );
+		const strangerPage = await stranger.newPage();
+		await strangerPage.goto( '/wp-admin/' );
+		await expect( strangerPage.locator( '.message' ) ).toHaveCount( 0 );
+
+		await page.goto( `/wp-admin/user-edit.php?user_id=${ id( 'alice' ) }#usm-history` );
+		const rows = page.locator( '.usm-history-row' );
+		await expect( rows ).toHaveCount( 2 );
+		await expect( rows.filter( { hasText: 'Safari on iOS' } ) ).toContainText( 'Device limit reached' );
+		await expect( rows.filter( { hasText: 'Firefox on Windows' } ) ).toContainText( 'Still signed in' );
+		await expect( rows.first().locator( 'time.axle-time' ).first() ).toHaveAttribute( 'datetime', /\d{4}-\d\d-\d\dT/ );
+
+		// An administrator signs the laptop out.
+		wp( 'user-session-manager', 'revoke', sessions( 'alice' )[ 0 ].handle );
+		await laptop.page.goto( '/wp-admin/profile.php' );
+		await expect( laptop.page.locator( '.message' ) ).toContainText( 'You were signed out by a site administrator, at' );
+
+		// Idle timeout, and a session that ran out.
+		const idle = await open( browser, 'alice', ANDROID );
+		wpEval( `update_option( 'usm_e2e_idle', 1 ); $id = get_user_by( 'login', 'alice' )->ID; $all = get_user_meta( $id, 'session_tokens', true );
+			foreach ( $all as $k => $s ) { $all[ $k ]['last_seen'] = time() - 120; } update_user_meta( $id, 'session_tokens', $all );` );
+		await idle.page.goto( '/wp-admin/profile.php' );
+		await expect( idle.page.locator( '.message' ) ).toContainText( 'You were signed out because you were inactive for a while' );
+
+		wpEval( `delete_option( 'usm_e2e_idle' );` );
+		const expired = await open( browser, 'alice', CHROME );
+		wpEval( `$id = get_user_by( 'login', 'alice' )->ID; $all = get_user_meta( $id, 'session_tokens', true );
+			foreach ( $all as $k => $s ) { $all[ $k ]['expiration'] = time() - 5; } update_user_meta( $id, 'session_tokens', $all );
+			$h = get_user_meta( $id, 'user_session_manager_history', true ); $h[0]['expires'] = time() - 5; update_user_meta( $id, 'user_session_manager_history', $h );` );
+		await expired.page.goto( '/wp-admin/profile.php' );
+		await expect( expired.page.locator( '.message' ) ).toContainText( 'Your session ended because it reached its time limit' );
+
+		// Your own sign out needs no explanation and is recorded as such.
+		const own = await open( browser, 'alice', FIREFOX );
+		await own.page.goto( '/wp-login.php?action=logout' );
+		await own.page.getByRole( 'link', { name: 'log out' } ).click();
+		await expect( own.page.locator( '.message' ) ).toContainText( 'You are now logged out' );
+		await expect( own.page.locator( '.message' ) ).not.toContainText( 'You were signed out because' );
+		const history = JSON.parse( wp( 'user-session-manager', 'history', 'alice', '--format=json' ) );
+		expect( history.map( ( row ) => row.reason ) ).toEqual( expect.arrayContaining( [ 'limit', 'admin', 'idle', 'expired', 'signed_out' ] ) );
+		expect( history[ 0 ].reason ).toBe( 'signed_out' );
+	} );
+
+	test( 'history follows the retention setting, the privacy tools and the clean-up', async ( { browser } ) => {
+		await open( browser, 'alice', IPHONE );
+		await open( browser, 'alice', FIREFOX );
+		const keep = () => JSON.parse( wpEval( `echo wp_json_encode( get_user_meta( get_user_by( 'login', 'alice' )->ID, 'user_session_manager_history', true ) ?: array() );` ) );
+		expect( keep() ).toHaveLength( 2 );
+
+		const exported = JSON.parse(
+			wpEval( `$tools = apply_filters( 'wp_privacy_personal_data_exporters', array() );
+				echo wp_json_encode( call_user_func( $tools['user-session-manager']['callback'], 'alice@example.com', 1 ) );` )
+		);
+		expect( exported.data.filter( ( item ) => item.group_id === 'user-session-manager-history' ) ).toHaveLength( 2 );
+
+		// An entry past the retention time goes with the clean-up, even for someone who never comes back.
+		wpEval( `$id = get_user_by( 'login', 'alice' )->ID; $h = get_user_meta( $id, 'user_session_manager_history', true );
+			$h[1]['start'] = time() - 200 * DAY_IN_SECONDS; $h[1]['seen'] = $h[1]['start']; $h[1]['end'] = $h[1]['start'] + 60; $h[1]['expires'] = $h[1]['end']; $h[1]['reason'] = 'idle';
+			update_user_meta( $id, 'user_session_manager_history', $h );` );
+		expect( wp( 'user-session-manager', 'prune' ) ).toContain( '1 old sign-in history entries' );
+		expect( keep() ).toHaveLength( 1 );
+
+		// Retention 0 keeps none, and the clean-up empties what was there.
+		wp( 'user-session-manager', 'settings', '--history-days=0' );
+		wp( 'user-session-manager', 'prune' );
+		expect( keep() ).toHaveLength( 0 );
+		await open( browser, 'alice', CHROME );
+		expect( keep() ).toHaveLength( 0 );
+
+		wp( 'user-session-manager', 'settings', '--history-days=90' );
+		await open( browser, 'alice', ANDROID );
+		expect( keep() ).toHaveLength( 1 );
+		wpEval( `$tools = apply_filters( 'wp_privacy_personal_data_erasers', array() );
+			call_user_func( $tools['user-session-manager']['callback'], 'alice@example.com', 1 );` );
+		expect( keep() ).toHaveLength( 0 );
+	} );
+
+	test( 'Sign everyone out asks for the words, keeps you and the chosen roles, and can retire passwords', async ( { page, browser } ) => {
+		await open( browser, 'alice', IPHONE );
+		await open( browser, 'bob', CHROME );
+		await open( browser, 'sam', FIREFOX );
+		await open( browser, 'carol', ANDROID );
+
+		await page.goto( SESSIONS );
+		await page.getByRole( 'link', { name: 'Sign everyone out' } ).click();
+		await expect( page.getByRole( 'heading', { name: 'Sign everyone out?' } ) ).toBeVisible();
+		await expect( page.locator( '.usm-incident-form' ) ).toContainText( 'This cannot be undone' );
+		const go = page.getByRole( 'button', { name: 'Sign everyone out' } );
+		const typed = page.getByLabel( /Type SIGN OUT to confirm/ );
+		await expect( go ).toBeDisabled();
+		await typed.fill( 'sign out' );
+		await expect( go ).toBeDisabled();
+
+		// The server checks the words too, whatever the page says.
+		await page.evaluate( () => {
+			const button = document.querySelector( '[data-usm-typed-button]' );
+			button.removeAttribute( 'disabled' );
+			button.setAttribute( 'aria-disabled', 'false' );
+		} );
+		await go.click();
+		await expect( page.locator( '.notice-error' ) ).toContainText( 'did not match' );
+		expect( sessions( 'alice' ) ).toHaveLength( 1 );
+
+		await page.getByLabel( 'Editor' ).check();
+		await page.getByLabel( 'Also require new passwords' ).check();
+		await page.getByLabel( /Type SIGN OUT to confirm/ ).fill( 'SIGN OUT' );
+		await expect( page.getByRole( 'button', { name: 'Sign everyone out' } ) ).toBeEnabled();
+		await page.getByRole( 'button', { name: 'Sign everyone out' } ).click();
+
+		await expect( page.locator( '.usm-notice' ) ).toContainText( 'Everyone was signed out: 3 sessions ended.' );
+		await expect( page.locator( '.usm-notice' ) ).toContainText( 'must now choose a new password' );
+		expect( sessions( 'alice' ) ).toHaveLength( 0 );
+		expect( sessions( 'sam' ) ).toHaveLength( 0 );
+		expect( sessions( 'carol' ) ).toHaveLength( 0 );
+		expect( sessions( 'bob' ) ).toHaveLength( 1 );
+		expect( await signedIn( page ) ).toBe( true );
+		await expect( page.locator( '.usm-incident-log' ) ).toHaveCount( 0 );
+
+		// Passwords: retired for everyone but you and the left-out role.
+		const works = ( login, password ) => {
+			try {
+				wp( 'user', 'check-password', login, password );
+				return true;
+			} catch ( error ) {
+				return false;
+			}
+		};
+		expect( works( 'alice', PASSWORD ) ).toBe( false );
+		expect( works( 'sam', PASSWORD ) ).toBe( false );
+		expect( works( 'bob', PASSWORD ) ).toBe( true );
+		expect( works( 'admin', ADMIN_PASSWORD ) ).toBe( true );
+		await page.goto( SESSIONS );
+		await expect( page.locator( '.usm-incident-log' ) ).toContainText( '3 sessions signed out' );
+
+		// It is in each person's history, and the login screen says why.
+		const history = JSON.parse( wp( 'user-session-manager', 'history', 'alice', '--format=json' ) );
+		expect( history[ 0 ].reason ).toBe( 'admin' );
+	} );
+
+	test( 'Sign everyone out from WP-CLI and from the ability, with exclusions', async ( { rest, browser } ) => {
+		test.skip( 'yes' !== wpEval( "echo function_exists( 'wp_register_ability' ) ? 'yes' : 'no';" ), 'The Abilities API needs WordPress 6.9.' );
+		await open( browser, 'alice', IPHONE );
+		await open( browser, 'bob', CHROME );
+		await open( browser, 'sam', FIREFOX );
+		const path = '/wp-abilities/v1/abilities/user-session-manager/sign-out-everyone/run';
+
+		// An explicit yes is required, and nobody is signed out without it.
+		const refused = await rest( 'POST', path, { input: { confirm: false } } );
+		expect( refused.status ).toBeGreaterThanOrEqual( 400 );
+		expect( sessions( 'alice' ) ).toHaveLength( 1 );
+
+		const done = await rest( 'POST', path, { input: { confirm: true, exclude_roles: [ 'editor' ] } } );
+		expect( done.status ).toBe( 200 );
+		expect( done.body ).toMatchObject( { users_signed_out: 2, sessions_ended: 2, passwords_retired: 0 } );
+		expect( sessions( 'bob' ) ).toHaveLength( 1 );
+
+		// A subscriber has no permission.
+		expect( wpEval( `wp_set_current_user( get_user_by( 'login', 'sam' )->ID ); $r = wp_get_ability( 'user-session-manager/sign-out-everyone' )->execute( array( 'confirm' => true ) ); echo is_wp_error( $r ) ? $r->get_error_code() : 'ran';` ) ).toBe( 'ability_invalid_permissions' );
+
+		await open( browser, 'alice', IPHONE );
+		expect( wp( 'user-session-manager', 'sign-out-everyone', '--keep-user=admin', '--exclude-roles=editor', '--yes' ) ).toContain( 'Signed' );
+		expect( sessions( 'alice' ) ).toHaveLength( 0 );
+		expect( sessions( 'bob' ) ).toHaveLength( 1 );
+		const log = JSON.parse( wpEval( `echo wp_json_encode( get_option( 'user_session_manager_incidents' ) );` ) );
+		expect( log.map( ( entry ) => entry.via ) ).toEqual( [ 'cli', 'ability' ] );
+	} );
+
+	test( 'the settings screen saves the new options, has a Help tab, and the Get started card can be dismissed', async ( { page } ) => {
+		await page.goto( SETTINGS );
+		await page.getByLabel( 'Sign out only the session the email was about' ).check();
+		await page.getByLabel( 'Keep sign-in history for' ).fill( '30' );
+		await page.getByRole( 'button', { name: 'Save settings' } ).click();
+		await expect( page.locator( '.usm-notice' ) ).toContainText( 'Settings saved.' );
+		const saved = JSON.parse( wp( 'user-session-manager', 'settings', '--format=json' ) );
+		expect( saved ).toMatchObject( { not_me: true, not_me_scope: 'session', history_days: 30 } );
+
+		await page.getByRole( 'button', { name: 'Help' } ).click();
+		await page.locator( '#tab-link-user-session-manager-history a' ).click();
+		await expect( page.locator( '#tab-panel-user-session-manager-history' ) ).toContainText( 'kept for the number of days you set' );
+
+		await page.goto( SESSIONS );
+		await expect( page.locator( '.usm-steps' ) ).toContainText( 'Limit administrator sessions' );
+		await page.locator( '.usm-steps' ).getByRole( 'link', { name: 'Dismiss' } ).click();
+		await expect( page.locator( '.usm-steps' ) ).toHaveCount( 0 );
+		await page.reload();
+		await expect( page.locator( '.usm-steps' ) ).toHaveCount( 0 );
+	} );
+
+	test( 'other scripts can change the confirm step through wp.hooks', async ( { page, browser } ) => {
+		await open( browser, 'alice', IPHONE );
+		await page.goto( `/wp-admin/user-edit.php?user_id=${ id( 'alice' ) }` );
+		await page.evaluate( () => wp.hooks.addFilter( 'user_session_manager.confirm_message', 'e2e', ( message ) => message + ' Hooked.' ) );
+		await page.locator( '.usm-sessions' ).getByRole( 'link', { name: 'Sign out' } ).click();
+		await expect( page.locator( '.usm-confirm-box' ) ).toContainText( 'Hooked.' );
+		// Escape cancels and gives focus back to the link.
+		await page.keyboard.press( 'Escape' );
+		await expect( page.locator( '.usm-confirm-box' ) ).toHaveCount( 0 );
+		await expect( page.locator( '.usm-sessions' ).getByRole( 'link', { name: 'Sign out' } ) ).toBeFocused();
+		expect( sessions( 'alice' ) ).toHaveLength( 1 );
 	} );
 } );

@@ -40,14 +40,23 @@ final class NewDevice implements Service {
 	private Sessions $sessions;
 
 	/**
+	 * The "This wasn't me" link.
+	 *
+	 * @var NotMe|null
+	 */
+	private ?NotMe $not_me;
+
+	/**
 	 * Sets up the email.
 	 *
 	 * @param Settings $settings Saved settings.
 	 * @param Sessions $sessions Session store.
+	 * @param NotMe    $not_me   Makes the "This wasn't me" link. Without it the email has none.
 	 */
-	public function __construct( Settings $settings, Sessions $sessions ) {
+	public function __construct( Settings $settings, Sessions $sessions, ?NotMe $not_me = null ) {
 		$this->settings = $settings;
 		$this->sessions = $sessions;
+		$this->not_me   = $not_me;
 	}
 
 	/**
@@ -154,6 +163,18 @@ final class NewDevice implements Service {
 		$site = wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES );
 		$ip   = isset( $session['ip'] ) && is_string( $session['ip'] ) && '' !== $session['ip'] ? $session['ip'] : __( 'unknown', 'user-session-manager' );
 
+		$link = null === $this->not_me ? '' : $this->not_me->create_link( $user, $session );
+		$note = '' === $link ? '' : "\n\n" . sprintf(
+			/* translators: 1: link, 2: number of days the link works. */
+			__(
+				'If this was not you, open this link. It signs that device out, makes the account choose a new password and tells a site administrator. Nothing happens until you confirm on the page it opens. The link works for %2$d days:
+%1$s',
+				'user-session-manager'
+			),
+			$link,
+			(int) round( $this->settings->not_me_lifetime() / DAY_IN_SECONDS )
+		);
+
 		$email = array(
 			'to'      => $user->user_email,
 			/* translators: %s: site name. */
@@ -180,7 +201,7 @@ If this was you, there is nothing to do. If it was not, change your password and
 				$ip,
 				wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), (int) ( $session['login'] ?? time() ) ),
 				get_dashboard_url( $user->ID, 'profile.php' ) . '#usm-sessions'
-			),
+			) . $note,
 			'headers' => array(),
 		);
 

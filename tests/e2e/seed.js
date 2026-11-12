@@ -109,4 +109,46 @@ function markShared( login ) {
 	wpEval( `\\AryanX\\Axle\\UserSessionManager\\Plugin::instance()->shared()->check( get_user_by( 'login', '${ login }' ) );` );
 }
 
-module.exports = { UA, createPeople, removePeople, addSessions, clearSessions, markShared };
+/**
+ * Makes a "This wasn't me" link for a login's first session and returns its path.
+ *
+ * @param {string} login User login.
+ * @return {string} Path and query of the link.
+ */
+function makeNotMe( login ) {
+	const url = wpEval( `
+		$user    = get_user_by( 'login', '${ login }' );
+		$store   = \\AryanX\\Axle\\UserSessionManager\\Plugin::instance()->sessions();
+		$list    = $store->for_user( $user->ID );
+		$verifier = key( $list );
+		$session = $list[ $verifier ] + array( 'handle' => $store->handle( $user->ID, $verifier ) );
+		echo \\AryanX\\Axle\\UserSessionManager\\Plugin::instance()->not_me()->create_link( $user, $session );
+	` );
+	const parsed = new URL( url.trim() );
+	return parsed.pathname + parsed.search;
+}
+
+/**
+ * Records a "This wasn't me" report and a history entry for a login.
+ *
+ * @param {string} login User login.
+ */
+function addReport( login ) {
+	wpEval( `
+		$user = get_user_by( 'login', '${ login }' );
+		update_option( 'user_session_manager_not_me_events', array( array( 'user' => $user->ID, 'time' => time() - 3600, 'device' => 'Chrome on Windows', 'ip' => '203.0.113.9', 'scope' => 'all', 'ended' => 2, 'reset' => true ) ), false );
+		update_user_meta( $user->ID, 'user_session_manager_history', array(
+			array( 'handle' => $user->ID . '-aaaaaaaaaaaaaaaaaaaaaaaa', 'start' => time() - 7200, 'seen' => time() - 3700, 'end' => time() - 3600, 'expires' => time() + 86400, 'reason' => 'not_me', 'by' => 0, 'ip' => '203.0.113.9', 'device' => 'Chrome on Windows', 'type' => 'desktop' ),
+			array( 'handle' => $user->ID . '-bbbbbbbbbbbbbbbbbbbbbbbb', 'start' => time() - 90000, 'seen' => time() - 80000, 'end' => time() - 80000, 'expires' => time() + 86400, 'reason' => 'idle', 'by' => 0, 'ip' => '192.0.2.18', 'device' => 'Safari on iOS', 'type' => 'mobile' ),
+		) );
+	` );
+}
+
+/**
+ * Removes what addReport() saved.
+ */
+function removeReport() {
+	wpEval( "delete_option( 'user_session_manager_not_me_events' ); foreach ( array( 'maria', 'james', 'priya' ) as $l ) { $u = get_user_by( 'login', $l ); if ( $u ) { delete_user_meta( $u->ID, 'user_session_manager_history' ); } }" );
+}
+
+module.exports = { makeNotMe, addReport, removeReport, UA, createPeople, removePeople, addSessions, clearSessions, markShared };

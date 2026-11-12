@@ -76,6 +76,11 @@ final class UsersColumn implements Service {
 			return (string) $output;
 		}
 
+		// A count says whether the person is signed in, so it is only shown for people the current user may edit.
+		if ( ! Access::can_manage( (int) $user_id ) ) {
+			return '<span aria-hidden="true">&ndash;</span><span class="screen-reader-text">' . esc_html__( 'Not available', 'user-session-manager' ) . '</span>';
+		}
+
 		$count = $this->sessions->count( (int) $user_id );
 		if ( 0 === $count ) {
 			return '<span aria-hidden="true">0</span><span class="screen-reader-text">' . esc_html__( 'No sessions', 'user-session-manager' ) . '</span>';

@@ -7,8 +7,17 @@
 
 namespace AryanX\Axle\UserSessionManager\Tests\Unit;
 
+use AryanX\Axle\UserSessionManager\Abilities;
+use AryanX\Axle\UserSessionManager\Admin\ProfileSessions;
+use AryanX\Axle\UserSessionManager\Admin\SessionsPage;
+use AryanX\Axle\UserSessionManager\Cli\Command;
+use AryanX\Axle\UserSessionManager\History;
+use AryanX\Axle\UserSessionManager\Incident;
+use AryanX\Axle\UserSessionManager\NotMe;
+use AryanX\Axle\UserSessionManager\Pruner;
 use AryanX\Axle\UserSessionManager\Sessions;
 use AryanX\Axle\UserSessionManager\Settings;
+use AryanX\Axle\UserSessionManager\SharedLogins;
 use Brain\Monkey\Functions;
 
 require_once dirname( __DIR__ ) . '/Stubs/sessions.php';
@@ -186,5 +195,21 @@ abstract class SessionTestCase extends TestCase {
 	 */
 	protected function policies( array $policies, array $other = array() ): void {
 		$this->options[ Settings::OPTION ] = array( 'policies' => $policies ) + $other;
+	}
+
+	protected function abilities( Settings $settings, Sessions $sessions, SharedLogins $shared ): Abilities {
+		return new Abilities( $sessions, $shared, new History( $settings, $sessions ), new NotMe( $settings, $sessions ), new Incident( $sessions ) );
+	}
+
+	protected function profile( Settings $settings, Sessions $sessions, SharedLogins $shared ): ProfileSessions {
+		return new ProfileSessions( $sessions, $shared, new History( $settings, $sessions ), new NotMe( $settings, $sessions ) );
+	}
+
+	protected function page( Settings $settings, Sessions $sessions, SharedLogins $shared ): SessionsPage {
+		return new SessionsPage( $settings, $sessions, $shared, new NotMe( $settings, $sessions ), new Incident( $sessions ) );
+	}
+
+	protected function command( Settings $settings, Sessions $sessions, SharedLogins $shared ): Command {
+		return new Command( $settings, $sessions, new Pruner( $settings, $sessions ), $shared, new History( $settings, $sessions ), new NotMe( $settings, $sessions ), new Incident( $sessions ) );
 	}
 }

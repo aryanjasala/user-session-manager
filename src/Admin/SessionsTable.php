@@ -105,13 +105,15 @@ final class SessionsTable extends \WP_List_Table {
 	public function prepare_items(): void {
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only list arguments.
 		$args              = array(
-			'search'   => isset( $_REQUEST['s'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['s'] ) ) : '',
-			'role'     => isset( $_REQUEST['role'] ) && ! is_network_admin() ? sanitize_key( wp_unslash( $_REQUEST['role'] ) ) : '',
-			'user_id'  => isset( $_REQUEST['user_id'] ) ? absint( $_REQUEST['user_id'] ) : 0,
-			'orderby'  => isset( $_REQUEST['orderby'] ) ? sanitize_key( wp_unslash( $_REQUEST['orderby'] ) ) : 'last_seen',
-			'order'    => isset( $_REQUEST['order'] ) && 'asc' === strtolower( sanitize_key( wp_unslash( $_REQUEST['order'] ) ) ) ? 'asc' : 'desc',
-			'paged'    => $this->get_pagenum(),
-			'per_page' => self::per_page(),
+			'search'        => isset( $_REQUEST['s'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['s'] ) ) : '',
+			'role'          => isset( $_REQUEST['role'] ) && ! is_network_admin() ? sanitize_key( wp_unslash( $_REQUEST['role'] ) ) : '',
+			'user_id'       => isset( $_REQUEST['user_id'] ) ? absint( $_REQUEST['user_id'] ) : 0,
+			'orderby'       => isset( $_REQUEST['orderby'] ) ? sanitize_key( wp_unslash( $_REQUEST['orderby'] ) ) : 'last_seen',
+			'order'         => isset( $_REQUEST['order'] ) && 'asc' === strtolower( sanitize_key( wp_unslash( $_REQUEST['order'] ) ) ) ? 'asc' : 'desc',
+			'paged'         => $this->get_pagenum(),
+			'per_page'      => self::per_page(),
+			// Only people the current user may edit: a global capability alone is not enough.
+			'editable_only' => true,
 		);
 		$this->shared_view = ! empty( $_REQUEST['shared'] );
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
@@ -171,7 +173,13 @@ final class SessionsTable extends \WP_List_Table {
 	 */
 	private function flagged(): array {
 		if ( null === $this->flagged ) {
-			$this->flagged = $this->shared->flagged();
+			$this->flagged = array_filter(
+				$this->shared->flagged(),
+				static function ( $flag, $user_id ): bool {
+					return Access::can_manage( (int) $user_id );
+				},
+				ARRAY_FILTER_USE_BOTH
+			);
 		}
 
 		return $this->flagged;
@@ -221,7 +229,15 @@ final class SessionsTable extends \WP_List_Table {
 	 * Text when there is nothing to list.
 	 */
 	public function no_items(): void {
-		echo '<div class="axle-empty"><p>' . esc_html__( 'No active sessions found. Sessions show up here when someone signs in, and disappear when they sign out or expire.', 'user-session-manager' ) . '</p></div>';
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only list arguments.
+		$filtered = ! empty( $_REQUEST['s'] ) || ! empty( $_REQUEST['role'] ) || ! empty( $_REQUEST['user_id'] ) || ! empty( $_REQUEST['shared'] );
+		echo '<div class="axle-empty"><p>' . esc_html__( 'No active sessions found. Sessions show up here when someone signs in, and disappear when they sign out or expire.', 'user-session-manager' ) . '</p>';
+		if ( $filtered ) {
+			printf( '<a class="button" href="%s">%s</a>', esc_url( SessionsPage::url() ), esc_html__( 'Show every session', 'user-session-manager' ) );
+		} elseif ( current_user_can( Access::settings_capability() ) ) {
+			printf( '<a class="button" href="%s">%s</a>', esc_url( SettingsPage::url() ), esc_html__( 'Open session policies', 'user-session-manager' ) );
+		}
+		echo '</div>';
 	}
 
 	/**
@@ -310,7 +326,14 @@ final class SessionsTable extends \WP_List_Table {
 
 		$actions = array();
 		if ( Access::can_manage( $user->ID ) && ! $item['current'] ) {
-			$actions['revoke'] = sprintf( '<a href="%1$s">%2$s</a>', esc_url( SessionsPage::action_url( 'revoke', $item['handle'] ) ), esc_html__( 'Sign out', 'user-session-manager' ) );
+			$actions['revoke'] = sprintf(
+				'<a href="%1$s" data-usm-confirm="%3$s" data-usm-confirm-title="%4$s" data-usm-confirm-button="%5$s">%2$s</a>',
+				esc_url( SessionsPage::action_url( 'revoke', $item['handle'] ) ),
+				esc_html__( 'Sign out', 'user-session-manager' ),
+				esc_attr__( 'That browser is signed out the next time it loads a page. This cannot be undone, but the person can sign in again.', 'user-session-manager' ),
+				esc_attr( $item['device'] ),
+				esc_attr__( 'Sign out this session', 'user-session-manager' )
+			);
 		}
 		if ( Access::can_manage( $user->ID ) ) {
 			// Both ask first. On your own row the default keeps this browser signed in.

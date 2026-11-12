@@ -68,7 +68,7 @@ final class ScreensTest extends SessionTestCase {
 		$this->user( 1, 'admin', array( 'administrator' ) );
 		$settings = new Settings();
 		$sessions = new Sessions( $settings );
-		$profile  = new ProfileSessions( $sessions, new SharedLogins( $settings, $sessions ) );
+		$profile  = $this->profile( $settings, $sessions, new SharedLogins( $settings, $sessions ) );
 
 		Filters\expectApplied( 'user_session_manager_hide_core_sessions' )->once()->with( true, 1 )->andReturn( true );
 		$this->assertTrue( $profile->hides_core_row( 1 ) );

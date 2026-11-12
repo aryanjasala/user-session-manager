@@ -396,20 +396,22 @@ final class Sessions implements Service {
 	 *     @type string $order    asc or desc. Default desc.
 	 *     @type int    $paged    Page, from 1.
 	 *     @type int    $per_page Rows per page. 0 returns every row.
+	 *     @type bool   $editable_only Only users the current user may manage (edit_user). Default false, for WP-CLI.
 	 * }
 	 * @return array{total: int, users: int, rows: array[], truncated: bool}
 	 */
 	public function query( array $args = array() ): array {
 		$args = array_merge(
 			array(
-				'search'   => '',
-				'role'     => '',
-				'user_id'  => 0,
-				'user_ids' => null,
-				'orderby'  => 'last_seen',
-				'order'    => 'desc',
-				'paged'    => 1,
-				'per_page' => 0,
+				'search'        => '',
+				'role'          => '',
+				'user_id'       => 0,
+				'user_ids'      => null,
+				'orderby'       => 'last_seen',
+				'order'         => 'desc',
+				'paged'         => 1,
+				'per_page'      => 0,
+				'editable_only' => false,
 			),
 			$args
 		);
@@ -448,7 +450,10 @@ final class Sessions implements Service {
 		$users   = 0;
 		$scanned = $this->scan_users(
 			$user_args,
-			function ( int $user_id ) use ( &$rows, &$users, $ip_search, $search ): void {
+			function ( int $user_id ) use ( &$rows, &$users, $ip_search, $search, $args ): void {
+				if ( $args['editable_only'] && ! Access::can_manage( $user_id ) ) {
+					return;
+				}
 				$found = false;
 				foreach ( $this->for_user( $user_id ) as $verifier => $session ) {
 					$row = $this->describe( $user_id, (string) $verifier, $session );
@@ -566,12 +571,12 @@ final class Sessions implements Service {
 	/**
 	 * IDs of users with stored sessions, in ID order.
 	 *
-	 * @param array $user_args Extra WP_User_Query arguments.
+	 * @param array $user_args Extra WP_User_Query arguments. `meta_key => false` lists every user, not only those with sessions.
 	 * @param int   $after     Only IDs above this one.
 	 * @param int   $number    How many.
 	 * @return int[]
 	 */
-	private function user_ids_after( array $user_args, int $after, int $number ): array {
+	public function user_ids_after( array $user_args, int $after, int $number ): array {
 		$args = array_merge(
 			array(
 				'fields'       => 'ID',
@@ -585,6 +590,9 @@ final class Sessions implements Service {
 			),
 			$user_args
 		);
+		if ( false === $args['meta_key'] ) {
+			unset( $args['meta_key'], $args['meta_compare'] );
+		}
 		if ( is_multisite() && ! isset( $args['role'] ) ) {
 			// Sessions are network-wide, like users.
 			$args['blog_id'] = 0;

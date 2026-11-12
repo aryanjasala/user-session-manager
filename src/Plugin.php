@@ -64,6 +64,27 @@ final class Plugin {
 	private SharedLogins $shared;
 
 	/**
+	 * Sign-in history.
+	 *
+	 * @var History
+	 */
+	private History $history;
+
+	/**
+	 * The "This wasn't me" link.
+	 *
+	 * @var NotMe
+	 */
+	private NotMe $not_me;
+
+	/**
+	 * "Sign everyone out".
+	 *
+	 * @var Incident
+	 */
+	private Incident $incident;
+
+	/**
 	 * Starts the plugin. Runs on `plugins_loaded`.
 	 */
 	public static function boot(): void {
@@ -88,9 +109,39 @@ final class Plugin {
 	private function __construct() {
 		$this->settings = new Settings();
 		$this->sessions = new Sessions( $this->settings );
-		$this->pruner   = new Pruner( $this->settings, $this->sessions );
-		$this->devices  = new NewDevice( $this->settings, $this->sessions );
+		$this->history  = new History( $this->settings, $this->sessions );
+		$this->pruner   = new Pruner( $this->settings, $this->sessions, $this->history );
+		$this->not_me   = new NotMe( $this->settings, $this->sessions );
+		$this->devices  = new NewDevice( $this->settings, $this->sessions, $this->not_me );
 		$this->shared   = new SharedLogins( $this->settings, $this->sessions );
+		$this->incident = new Incident( $this->sessions );
+	}
+
+	/**
+	 * Sign-in history, for other plugins.
+	 *
+	 * @return History
+	 */
+	public function history(): History {
+		return $this->history;
+	}
+
+	/**
+	 * "This wasn't me" reports, for other plugins.
+	 *
+	 * @return NotMe
+	 */
+	public function not_me(): NotMe {
+		return $this->not_me;
+	}
+
+	/**
+	 * "Sign everyone out", for other plugins.
+	 *
+	 * @return Incident
+	 */
+	public function incident(): Incident {
+		return $this->incident;
 	}
 
 	/**
@@ -126,18 +177,21 @@ final class Plugin {
 	private function register(): void {
 		$services = array(
 			$this->sessions,
+			$this->history,
+			new LoginNotice( $this->history, $this->sessions ),
+			$this->not_me,
 			new Activity( $this->settings, $this->sessions ),
 			new Limits( $this->settings, $this->sessions ),
 			$this->devices,
 			$this->shared,
 			$this->pruner,
-			new Privacy( $this->settings, $this->sessions, $this->devices, $this->shared ),
-			new ProfileSessions( $this->sessions, $this->shared ),
-			new SessionsPage( $this->sessions, $this->shared ),
+			new Privacy( $this->settings, $this->sessions, $this->devices, $this->shared, $this->history, $this->not_me ),
+			new ProfileSessions( $this->sessions, $this->shared, $this->history, $this->not_me ),
+			new SessionsPage( $this->settings, $this->sessions, $this->shared, $this->not_me, $this->incident ),
 			new UsersColumn( $this->sessions ),
 			new SettingsPage( $this->settings ),
-			new SiteHealth( $this->settings, $this->sessions ),
-			new Abilities( $this->sessions, $this->shared ),
+			new SiteHealth( $this->settings, $this->sessions, $this->not_me ),
+			new Abilities( $this->sessions, $this->shared, $this->history, $this->not_me, $this->incident ),
 		);
 
 		foreach ( $services as $service ) {
@@ -145,7 +199,7 @@ final class Plugin {
 		}
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			\WP_CLI::add_command( 'user-session-manager', new Command( $this->settings, $this->sessions, $this->pruner, $this->shared ) );
+			\WP_CLI::add_command( 'user-session-manager', new Command( $this->settings, $this->sessions, $this->pruner, $this->shared, $this->history, $this->not_me, $this->incident ) );
 		}
 	}
 }

@@ -545,9 +545,11 @@ final class SharedLoginsTest extends SessionTestCase {
 		$shared   = new SharedLogins( $settings, $sessions );
 		$shared->check( $user );
 		Functions\when( 'is_email' )->justReturn( false );
+		$this->current_user = 1;
+		Functions\when( 'current_user_can' )->justReturn( true );
 
 		\WP_User_Query::$queue = array( array( 7 ) );
-		$all = ( new Abilities( $sessions, $shared ) )->list_shared_logins();
+		$all = ( $this->abilities( $settings, $sessions, $shared ) )->list_shared_logins();
 
 		$this->assertSame( 1, $all['total'] );
 		$account = $all['accounts'][0];
@@ -558,8 +560,8 @@ final class SharedLoginsTest extends SessionTestCase {
 		$this->assertSame( array( '198.51.100.20', '192.0.2.10' ), array_column( $account['sessions'], 'ip' ), 'Most recently active first.' );
 		$this->assertMatchesRegularExpression( '/^7-[0-9a-f]{24}$/', $account['sessions'][0]['handle'] );
 
-		$this->assertSame( 1, ( new Abilities( $sessions, $shared ) )->list_shared_logins( array( 'user' => 'alice' ) )['total'] );
-		$this->assertSame( 0, ( new Abilities( $sessions, $shared ) )->list_shared_logins( array( 'user' => 'nobody' ) )['total'] );
+		$this->assertSame( 1, ( $this->abilities( $settings, $sessions, $shared ) )->list_shared_logins( array( 'user' => 'alice' ) )['total'] );
+		$this->assertSame( 0, ( $this->abilities( $settings, $sessions, $shared ) )->list_shared_logins( array( 'user' => 'nobody' ) )['total'] );
 	}
 
 	public function test_privacy_exports_and_erases_the_flag(): void {
@@ -646,7 +648,7 @@ final class SharedLoginsTest extends SessionTestCase {
 			}
 		};
 		Functions\when( 'wp_roles' )->justReturn( $roles );
-		$command = new Command( $settings, $sessions, new Pruner( $settings, $sessions ), $shared );
+		$command = $this->command( $settings, $sessions, $shared );
 
 		\WP_User_Query::$queue = array( array( 7 ) );
 		$command->shared( array(), array( 'format' => 'json' ) );
