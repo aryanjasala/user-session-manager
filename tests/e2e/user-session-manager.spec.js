@@ -693,7 +693,7 @@ test.describe( 'User Session Manager', () => {
 		expect( mail() ).toHaveLength( 1 );
 
 		await tab.getByRole( 'button', { name: 'This wasn\'t me, secure the account' } ).click();
-		await expect( tab.locator( 'body' ) ).toContainText( 'The account is safe' );
+		await expect( tab.locator( 'body' ) ).toContainText( 'Done. We signed the account out' );
 		expect( sessions( 'alice' ) ).toHaveLength( 0 );
 
 		// The old password no longer works.
@@ -713,10 +713,10 @@ test.describe( 'User Session Manager', () => {
 		// Single use, and a wrong key looks exactly the same.
 		const again = await tab.goto( link );
 		expect( again.status() ).toBe( 404 );
-		await expect( tab.locator( 'body' ) ).toContainText( 'This link no longer works' );
+		await expect( tab.locator( 'body' ) ).toContainText( 'This link has expired, or it has already been used' );
 		const wrong = await tab.goto( link.replace( /usm_key=(\d+)\.[0-9a-f]+/, 'usm_key=$1.' + 'a'.repeat( 48 ) ) );
 		expect( wrong.status() ).toBe( 404 );
-		await expect( tab.locator( 'body' ) ).toContainText( 'This link no longer works' );
+		await expect( tab.locator( 'body' ) ).toContainText( 'This link has expired, or it has already been used' );
 
 		// The event shows on the profile, on Users > Sessions, in WP-CLI and in the history.
 		await page.goto( `/wp-admin/user-edit.php?user_id=${ id( 'alice' ) }` );
