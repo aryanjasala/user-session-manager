@@ -79,15 +79,28 @@ final class PrunerTest extends SessionTestCase {
 
 		$settings = new Settings();
 		$sessions = new Sessions( $settings );
-		( new Abilities( $sessions, new SharedLogins( $settings, $sessions ) ) )->register_abilities();
+		( $this->abilities( $settings, $sessions, new SharedLogins( $settings, $sessions ) ) )->register_abilities();
 
-		$this->assertSame( array( 'user-session-manager/list-sessions', 'user-session-manager/revoke-session', 'user-session-manager/sign-out-user', 'user-session-manager/list-shared-logins' ), array_keys( $registered ) );
+		$this->assertSame( array(
+				'user-session-manager/list-sessions',
+				'user-session-manager/revoke-session',
+				'user-session-manager/sign-out-user',
+				'user-session-manager/list-shared-logins',
+				'user-session-manager/list-sign-in-history',
+				'user-session-manager/list-not-me-reports',
+				'user-session-manager/sign-out-everyone',
+			),
+			array_keys( $registered ) );
 		foreach ( $registered as $args ) {
 			$this->assertTrue( $args['meta']['public'] );
 			$this->assertTrue( $args['meta']['mcp']['public'] );
 			$this->assertTrue( $args['meta']['show_in_rest'] );
 		}
 		$this->assertTrue( $registered['user-session-manager/list-sessions']['meta']['annotations']['readonly'] );
+		$this->assertTrue( $registered['user-session-manager/list-sign-in-history']['meta']['annotations']['readonly'] );
+		$this->assertTrue( $registered['user-session-manager/list-not-me-reports']['meta']['annotations']['readonly'] );
+		$this->assertTrue( $registered['user-session-manager/sign-out-everyone']['meta']['annotations']['destructive'] );
+		$this->assertFalse( $registered['user-session-manager/sign-out-everyone']['meta']['annotations']['readonly'] );
 		$this->assertTrue( $registered['user-session-manager/list-shared-logins']['meta']['annotations']['readonly'] );
 		$this->assertSame(
 			array(
@@ -107,7 +120,7 @@ final class PrunerTest extends SessionTestCase {
 		Functions\when( 'is_email' )->justReturn( false );
 		$settings  = new Settings();
 		$sessions  = new Sessions( $settings );
-		$abilities = new Abilities( $sessions, new SharedLogins( $settings, $sessions ) );
+		$abilities = $this->abilities( $settings, $sessions, new SharedLogins( $settings, $sessions ) );
 
 		$this->assertTrue( $abilities->can_list() );
 		$this->assertTrue( $abilities->can_list( array( 'user' => 'alice' ) ) );
@@ -126,6 +139,7 @@ final class PrunerTest extends SessionTestCase {
 	}
 
 	public function test_the_users_column_counts_and_links_sessions(): void {
+		$this->current_user = 1;
 		Functions\when( 'current_user_can' )->justReturn( true );
 		Functions\when( 'admin_url' )->alias(
 			static function ( $path ) {
@@ -148,6 +162,22 @@ final class PrunerTest extends SessionTestCase {
 		$this->assertStringContainsString( 'No sessions', $column->render( '', UsersColumn::COLUMN, 8 ) );
 	}
 
+	public function test_the_users_column_hides_the_count_for_people_the_viewer_may_not_edit(): void {
+		$this->current_user = 1;
+		Functions\when( 'current_user_can' )->alias(
+			static function ( $capability, $user_id = 0 ) {
+				return 'edit_user' !== $capability || 9 !== $user_id;
+			}
+		);
+		$this->session( 9, 'a' );
+		$column = new UsersColumn( new Sessions( new Settings() ) );
+
+		$html = $column->render( '', UsersColumn::COLUMN, 9 );
+
+		$this->assertStringContainsString( 'Not available', $html );
+		$this->assertStringNotContainsString( '>1<', $html );
+	}
+
 	public function test_bulk_sign_outs_are_announced_and_skip_users_out_of_reach(): void {
 		$this->current_user = 1;
 		Functions\when( 'current_user_can' )->alias(
@@ -157,7 +187,7 @@ final class PrunerTest extends SessionTestCase {
 		);
 		$settings = new Settings();
 		$sessions = new Sessions( $settings );
-		$page     = new SessionsPage( $sessions, new SharedLogins( $settings, $sessions ) );
+		$page     = $this->page( $settings, $sessions, new SharedLogins( $settings, $sessions ) );
 		$a        = $sessions->handle( 7, $this->session( 7, 'a' ) );
 		$b        = $sessions->handle( 7, $this->session( 7, 'b' ) );
 		$boss     = $sessions->handle( 9, $this->session( 9, 'boss' ) );

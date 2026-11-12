@@ -63,6 +63,24 @@ final class Access {
 	}
 
 	/**
+	 * Whether the current user may use "Sign everyone out".
+	 *
+	 * Each user is still checked with edit_user while it runs.
+	 *
+	 * @return bool
+	 */
+	public static function can_sign_out_everyone(): bool {
+		/**
+		 * Filters the capability needed for "Sign everyone out", on top of seeing every session.
+		 *
+		 * @param string $capability Default edit_users.
+		 */
+		$capability = (string) apply_filters( 'user_session_manager_incident_capability', 'edit_users' );
+
+		return self::can_view_all() && current_user_can( '' !== $capability ? $capability : 'edit_users' );
+	}
+
+	/**
 	 * Whether the current user may see and end a user's sessions.
 	 *
 	 * @param int $user_id User whose sessions they are.

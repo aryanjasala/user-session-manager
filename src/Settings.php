@@ -55,14 +55,22 @@ final class Settings {
 		'new_device_email' => false,
 		'device_days'      => 30,
 		'mask_ip'          => false,
+		'not_me'           => true,
+		'not_me_scope'     => 'all',
+		'history_days'     => 90,
 	);
+
+	/**
+	 * What "This wasn't me" signs out: every session of the account, or only the reported one.
+	 */
+	public const NOT_ME_SCOPES = array( 'all', 'session' );
 
 	private const LAST_SEEN_INTERVAL = 300;
 
 	/**
 	 * All settings, with defaults filled in.
 	 *
-	 * @return array{policies: array<string, array<string, int>>, shared: array<string, string>, limit_mode: string, new_device_email: bool, device_days: int, mask_ip: bool}
+	 * @return array{policies: array<string, array<string, int>>, shared: array<string, string>, limit_mode: string, new_device_email: bool, device_days: int, mask_ip: bool, not_me: bool, not_me_scope: string, history_days: int}
 	 */
 	public function all(): array {
 		$saved = get_site_option( self::OPTION, array() );
@@ -87,6 +95,9 @@ final class Settings {
 			'new_device_email' => (bool) $all['new_device_email'],
 			'device_days'      => max( 1, min( 365, (int) $all['device_days'] ) ),
 			'mask_ip'          => (bool) $all['mask_ip'],
+			'not_me'           => (bool) $all['not_me'],
+			'not_me_scope'     => in_array( $all['not_me_scope'], self::NOT_ME_SCOPES, true ) ? (string) $all['not_me_scope'] : 'all',
+			'history_days'     => max( 0, min( 365, (int) $all['history_days'] ) ),
 		);
 	}
 
@@ -302,6 +313,66 @@ final class Settings {
 		 * @param int $days From the setting. Default 30.
 		 */
 		return max( 1, min( 365, (int) apply_filters( 'user_session_manager_device_memory_days', $this->get( 'device_days' ) ) ) );
+	}
+
+	/**
+	 * Whether the new device email carries a "This wasn't me" link, and the link works.
+	 *
+	 * @return bool
+	 */
+	public function not_me_enabled(): bool {
+		/**
+		 * Filters whether the "This wasn't me" link is on.
+		 *
+		 * @param bool $enabled From the setting. Default true.
+		 */
+		return (bool) apply_filters( 'user_session_manager_not_me_enabled', $this->get( 'not_me' ) );
+	}
+
+	/**
+	 * What "This wasn't me" signs out.
+	 *
+	 * @param \WP_User $user The account that was reported.
+	 * @return string all (every session) or session (only the reported one).
+	 */
+	public function not_me_scope( \WP_User $user ): string {
+		/**
+		 * Filters what "This wasn't me" signs out.
+		 *
+		 * @param string   $scope all signs the account out everywhere, session only the reported session.
+		 * @param \WP_User $user  The account that was reported.
+		 */
+		$scope = apply_filters( 'user_session_manager_not_me_scope', $this->get( 'not_me_scope' ), $user );
+
+		return in_array( $scope, self::NOT_ME_SCOPES, true ) ? (string) $scope : 'all';
+	}
+
+	/**
+	 * Seconds a "This wasn't me" link stays valid.
+	 *
+	 * @return int
+	 */
+	public function not_me_lifetime(): int {
+		/**
+		 * Filters how long a "This wasn't me" link stays valid.
+		 *
+		 * @param int $seconds Default 7 days. Kept between 1 hour and 30 days.
+		 */
+		return max( HOUR_IN_SECONDS, min( 30 * DAY_IN_SECONDS, (int) apply_filters( 'user_session_manager_not_me_lifetime', 7 * DAY_IN_SECONDS ) ) );
+	}
+
+	/**
+	 * Days sign-in history is kept. 0 keeps none.
+	 *
+	 * @return int
+	 */
+	public function history_days(): int {
+		/**
+		 * Filters how many days sign-in history is kept.
+		 *
+		 * @param int $days From the setting. Default 90. 0 turns history off.
+		 */
+		return max( 0, min( 365, (int) apply_filters( 'user_session_manager_history_days', $this->get( 'history_days' ) ) ) );
 	}
 
 	/**

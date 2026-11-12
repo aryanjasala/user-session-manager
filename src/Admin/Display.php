@@ -7,7 +7,10 @@
 
 namespace AryanX\Axle\UserSessionManager\Admin;
 
+use AryanX\Axle\UserSessionManager\History;
 use AryanX\Axle\UserSessionManager\SharedLogins;
+use const AryanX\Axle\UserSessionManager\PLUGIN_FILE;
+use const AryanX\Axle\UserSessionManager\VERSION;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -21,6 +24,7 @@ final class Display {
 	 */
 	public const ALLOWED = array(
 		'time'   => array(
+			'class'    => true,
 			'datetime' => true,
 			'title'    => true,
 		),
@@ -53,27 +57,43 @@ final class Display {
 	 * @return string HTML.
 	 */
 	public static function time( int $timestamp, string $fallback = '' ): string {
-		if ( $timestamp < 1 ) {
-			return esc_html( '' !== $fallback ? $fallback : __( 'Not recorded', 'user-session-manager' ) );
-		}
+		return AxleUi::relative_time( $timestamp, '' !== $fallback ? $fallback : __( 'Not recorded', 'user-session-manager' ) );
+	}
 
-		$now = time();
-		if ( abs( $now - $timestamp ) < MINUTE_IN_SECONDS ) {
-			$text = __( 'Just now', 'user-session-manager' );
-		} elseif ( $timestamp < $now ) {
-			/* translators: %s: time span, e.g. "3 hours". */
-			$text = sprintf( __( '%s ago', 'user-session-manager' ), human_time_diff( $timestamp, $now ) );
-		} else {
-			/* translators: %s: time span, e.g. "2 days". */
-			$text = sprintf( __( 'in %s', 'user-session-manager' ), human_time_diff( $now, $timestamp ) );
-		}
-
-		return sprintf(
-			'<time datetime="%1$s" title="%2$s">%3$s</time>',
-			esc_attr( gmdate( 'c', $timestamp ) ),
-			esc_attr( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) ),
-			esc_html( $text )
+	/**
+	 * Loads the script for the confirm steps and spoken results.
+	 */
+	public static function enqueue_script(): void {
+		wp_enqueue_script( 'user-session-manager', plugins_url( 'assets/admin.js', PLUGIN_FILE ), array( 'wp-a11y', 'wp-hooks' ), VERSION, true );
+		wp_localize_script(
+			'user-session-manager',
+			'usmAdmin',
+			array(
+				'title'   => __( 'Sign this session out?', 'user-session-manager' ),
+				'confirm' => __( 'Sign out', 'user-session-manager' ),
+				'cancel'  => __( 'Cancel', 'user-session-manager' ),
+			)
 		);
+	}
+
+	/**
+	 * The badge that says how a session ended, or that it is still signed in.
+	 *
+	 * @param array $row Row from History::rows().
+	 * @return string HTML.
+	 */
+	public static function ending( array $row ): string {
+		if ( 'active' === $row['state'] ) {
+			return '<span class="axle-badge axle-badge--good">' . esc_html__( 'Still signed in', 'user-session-manager' ) . '</span>';
+		}
+
+		$reason = '' !== $row['reason'] ? $row['reason'] : 'unknown';
+		$html   = sprintf( '<span class="axle-badge axle-badge--%1$s">%2$s</span>', esc_attr( History::reason_tone( $reason ) ), esc_html( History::reason_label( $reason ) ) );
+		if ( $row['end'] > 0 ) {
+			$html .= '<br><small>' . AxleUi::relative_time( (int) $row['end'] ) . '</small>';
+		}
+
+		return $html;
 	}
 
 	/**

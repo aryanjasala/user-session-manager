@@ -36,14 +36,41 @@ final class Abilities implements Service {
 	private SharedLogins $shared;
 
 	/**
+	 * Sign-in history.
+	 *
+	 * @var History
+	 */
+	private History $history;
+
+	/**
+	 * "This wasn't me" reports.
+	 *
+	 * @var NotMe
+	 */
+	private NotMe $not_me;
+
+	/**
+	 * "Sign everyone out".
+	 *
+	 * @var Incident
+	 */
+	private Incident $incident;
+
+	/**
 	 * Sets up the abilities.
 	 *
 	 * @param Sessions     $sessions Session store.
 	 * @param SharedLogins $shared   Shared login detection.
+	 * @param History      $history  Sign-in history.
+	 * @param NotMe        $not_me   "This wasn't me" reports.
+	 * @param Incident     $incident "Sign everyone out".
 	 */
-	public function __construct( Sessions $sessions, SharedLogins $shared ) {
+	public function __construct( Sessions $sessions, SharedLogins $shared, History $history, NotMe $not_me, Incident $incident ) {
 		$this->sessions = $sessions;
 		$this->shared   = $shared;
+		$this->history  = $history;
+		$this->not_me   = $not_me;
+		$this->incident = $incident;
 	}
 
 	/**
@@ -298,6 +325,154 @@ final class Abilities implements Service {
 				'idempotent' => true,
 			)
 		);
+
+		$this->ability(
+			'list-sign-in-history',
+			__( 'List sign-in history', 'user-session-manager' ),
+			__( 'When and where an account signed in over the retention time (90 days by default), and how each session ended: signed out, expired, idle, signed out from another device, signed out by an administrator, device limit reached, reported as "This wasn\'t me", or password changed. Without input, the current user. With user, that user, which needs permission to edit them.', 'user-session-manager' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'user'  => $user_field,
+					'limit' => array(
+						'type'    => 'integer',
+						'minimum' => 1,
+						'maximum' => 200,
+						'default' => 50,
+					),
+				),
+				'additionalProperties' => false,
+				'default'              => array(),
+			),
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'total'   => array( 'type' => 'integer' ),
+					'entries' => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'       => 'object',
+							'properties' => array(
+								'device'      => array( 'type' => 'string' ),
+								'ip'          => array( 'type' => 'string' ),
+								'signed_in'   => array( 'type' => 'string' ),
+								'last_active' => array( 'type' => 'string' ),
+								'ended'       => array(
+									'type'        => 'string',
+									'description' => 'Empty while the session is active.',
+								),
+								'state'       => array(
+									'type' => 'string',
+									'enum' => array( 'active', 'ended' ),
+								),
+								'reason'      => array(
+									'type'        => 'string',
+									'enum'        => array_merge( array( '', 'unknown' ), History::REASONS ),
+									'description' => 'How the session ended. Empty while it is active.',
+								),
+							),
+						),
+					),
+				),
+			),
+			array( $this, 'list_history' ),
+			array( $this, 'can_list_history' ),
+			array(
+				'readonly'   => true,
+				'idempotent' => true,
+			)
+		);
+
+		$this->ability(
+			'list-not-me-reports',
+			__( 'List "This wasn\'t me" reports', 'user-session-manager' ),
+			__( 'Sign-ins that the owner of an account reported as not them, newest first: who, which device and IP address, when, and how many sessions were signed out. Needs permission to manage users. Only people you may edit are listed.', 'user-session-manager' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'days' => array(
+						'type'    => 'integer',
+						'minimum' => 0,
+						'maximum' => 365,
+						'default' => 30,
+					),
+				),
+				'additionalProperties' => false,
+				'default'              => array(),
+			),
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'total'   => array( 'type' => 'integer' ),
+					'reports' => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'       => 'object',
+							'properties' => array(
+								'user_id'    => array( 'type' => 'integer' ),
+								'user_login' => array( 'type' => 'string' ),
+								'device'     => array( 'type' => 'string' ),
+								'ip'         => array( 'type' => 'string' ),
+								'reported'   => array( 'type' => 'string' ),
+								'ended'      => array( 'type' => 'integer' ),
+							),
+						),
+					),
+				),
+			),
+			array( $this, 'list_reports' ),
+			array( Access::class, 'can_view_all' ),
+			array(
+				'readonly'   => true,
+				'idempotent' => true,
+			)
+		);
+
+		$this->ability(
+			'sign-out-everyone',
+			__( 'Sign everyone out', 'user-session-manager' ),
+			__( 'For an incident. Ends every session of every user you may edit, except your own when keep_current is true and the roles in exclude_roles. With require_new_passwords, every affected password also stops working, so each person has to use "Lost your password?" to choose a new one. Nobody is emailed. Your own password is never changed. It cannot be undone, and confirm must be true.', 'user-session-manager' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'confirm'               => array(
+						'type'        => 'boolean',
+						'description' => 'Must be true.',
+					),
+					'keep_current'          => array(
+						'type'    => 'boolean',
+						'default' => true,
+					),
+					'exclude_roles'         => array(
+						'type'  => 'array',
+						'items' => array( 'type' => 'string' ),
+					),
+					'require_new_passwords' => array(
+						'type'    => 'boolean',
+						'default' => false,
+					),
+				),
+				'required'             => array( 'confirm' ),
+				'additionalProperties' => false,
+			),
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'users_signed_out'  => array( 'type' => 'integer' ),
+					'sessions_ended'    => array( 'type' => 'integer' ),
+					'passwords_retired' => array( 'type' => 'integer' ),
+					'excluded'          => array( 'type' => 'integer' ),
+					'skipped'           => array( 'type' => 'integer' ),
+				),
+			),
+			array( $this, 'sign_out_everyone' ),
+			array( Access::class, 'can_sign_out_everyone' ),
+			array(
+				'readonly'    => false,
+				'destructive' => true,
+				'idempotent'  => false,
+			)
+		);
 	}
 
 	/**
@@ -326,7 +501,13 @@ final class Abilities implements Service {
 			$flag    = $this->shared->get( $user_id );
 			$flags   = $flag ? array( $user_id => $flag ) : array();
 		} else {
-			$flags = $this->shared->flagged();
+			$flags = array_filter(
+				$this->shared->flagged(),
+				static function ( $flag, $user_id ): bool {
+					return Access::can_manage( (int) $user_id );
+				},
+				ARRAY_FILTER_USE_BOTH
+			);
 		}
 
 		$accounts = array();
@@ -369,6 +550,109 @@ final class Abilities implements Service {
 		return array(
 			'total'    => count( $flags ),
 			'accounts' => $accounts,
+		);
+	}
+
+	/**
+	 * Permission: the user is the current user, or one they may manage.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return bool
+	 */
+	public function can_list_history( $input = null ): bool {
+		$input = (array) $input;
+
+		return Access::can_manage( isset( $input['user'] ) ? self::user_id( $input['user'] ) : get_current_user_id() );
+	}
+
+	/**
+	 * Ability: sign-in history.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return array
+	 */
+	public function list_history( $input = null ): array {
+		$input   = (array) $input;
+		$limit   = max( 1, min( 200, (int) ( $input['limit'] ?? 50 ) ) );
+		$user_id = isset( $input['user'] ) ? self::user_id( $input['user'] ) : get_current_user_id();
+		$rows    = $this->history->rows( $user_id );
+
+		return array(
+			'total'   => count( $rows ),
+			'entries' => array_map(
+				static function ( array $row ): array {
+					return array(
+						'device'      => $row['device'],
+						'ip'          => $row['ip'],
+						'signed_in'   => $row['start'] ? gmdate( 'c', $row['start'] ) : '',
+						'last_active' => $row['seen'] ? gmdate( 'c', $row['seen'] ) : '',
+						'ended'       => $row['end'] ? gmdate( 'c', $row['end'] ) : '',
+						'state'       => $row['state'],
+						'reason'      => 'active' === $row['state'] ? '' : ( '' !== $row['reason'] ? $row['reason'] : 'unknown' ),
+					);
+				},
+				array_slice( $rows, 0, $limit )
+			),
+		);
+	}
+
+	/**
+	 * Ability: "This wasn't me" reports for people the caller may manage.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return array
+	 */
+	public function list_reports( $input = null ): array {
+		$days    = max( 0, min( 365, (int) ( ( (array) $input )['days'] ?? 30 ) ) );
+		$reports = array();
+		foreach ( $this->not_me->events( 0, $days ) as $event ) {
+			if ( ! Access::can_manage( (int) $event['user'] ) ) {
+				continue;
+			}
+			$user      = get_userdata( (int) $event['user'] );
+			$reports[] = array(
+				'user_id'    => (int) $event['user'],
+				'user_login' => $user ? (string) $user->user_login : '',
+				'device'     => (string) $event['device'],
+				'ip'         => (string) $event['ip'],
+				'reported'   => gmdate( 'c', (int) $event['time'] ),
+				'ended'      => (int) $event['ended'],
+			);
+		}
+
+		return array(
+			'total'   => count( $reports ),
+			'reports' => $reports,
+		);
+	}
+
+	/**
+	 * Ability: signs everyone out.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return array|\WP_Error
+	 */
+	public function sign_out_everyone( $input = null ) {
+		$input = (array) $input;
+		if ( true !== ( $input['confirm'] ?? false ) ) {
+			return new \WP_Error( 'user_session_manager_not_confirmed', __( 'Set confirm to true to sign everyone out.', 'user-session-manager' ) );
+		}
+
+		$job = $this->incident->run_all(
+			array(
+				'keep_current'  => ! array_key_exists( 'keep_current', $input ) || (bool) $input['keep_current'],
+				'exclude_roles' => (array) ( $input['exclude_roles'] ?? array() ),
+				'passwords'     => ! empty( $input['require_new_passwords'] ),
+				'via'           => 'ability',
+			)
+		);
+
+		return array(
+			'users_signed_out'  => (int) $job['users'],
+			'sessions_ended'    => (int) $job['sessions'],
+			'passwords_retired' => (int) $job['passwords_set'],
+			'excluded'          => (int) $job['excluded'],
+			'skipped'           => (int) $job['skipped'],
 		);
 	}
 
@@ -419,8 +703,10 @@ final class Abilities implements Service {
 		$input = (array) $input;
 		$limit = max( 1, min( 100, (int) ( $input['limit'] ?? self::LIMIT ) ) );
 		$args  = array(
-			'per_page' => $limit,
-			'paged'    => 1,
+			'per_page'      => $limit,
+			'paged'         => 1,
+			// Everyone's sessions means everyone the caller may edit.
+			'editable_only' => true,
 		);
 		if ( empty( $input['all'] ) ) {
 			$args['user_id'] = isset( $input['user'] ) ? self::user_id( $input['user'] ) : get_current_user_id();

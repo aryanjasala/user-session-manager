@@ -20,6 +20,8 @@ User Session Manager shows those sessions and lets you end them.
 
 * **Your sessions**: every browser signed in to your account, with the device ("Safari on iOS"), IP address, when it signed in, when it was last active and when it expires. The one you are using is marked "This device".
 * **Sign out** any one of them, or all of them except this one.
+* **Sign-in history**: when and where the account signed in over the last 90 days, and how each session ended: signed out, expired, idle, signed out from another device, signed out by an administrator, device limit reached, reported as "This wasn't me", or password changed.
+* A **message on the login screen** that says why you were signed out and when, shown only to the browser that held the session.
 
 **For administrators:**
 
@@ -30,6 +32,8 @@ User Session Manager shows those sessions and lets you end them.
 * **Session length per role**, with and without "Remember Me".
 * **New device email** (off by default): users get an email when they sign in from a browser and network not seen on their account in the last 30 days.
 * **Shared login detection**: when the sessions of an account look like more than one person, such as two computers on different networks at the same time, the account gets a "Possibly shared" badge with the reasons. Per role you choose whether that also emails the user and the site administrator, or keeps only the newest session. A login is never refused on this guess.
+* **This wasn't me**: the new device email has a link for the owner of the account. Opening it changes nothing. Pressing the button on the page it opens signs the device out, makes the password stop working, emails a reset link and tells the site administrator. The link works once, for 7 days.
+* **Sign everyone out**, for incidents: keep yourself signed in, leave out roles, optionally make every password stop working. You type a confirmation, and large sites are handled in batches.
 * **Shortened IP addresses**, if you would rather not store the full address.
 * A **Site Health** check that warns when administrator sessions never time out.
 
@@ -39,7 +43,7 @@ Free and open source under the GPL. No pro version, no upsells, no ads in wp-adm
 
 = Privacy =
 
-Sessions hold an IP address and a browser string. The plugin takes part in Tools > Export Personal Data (it lists a user's sessions) and Tools > Erase Personal Data (it signs the user out everywhere), adds suggested text to Settings > Privacy, and can store shortened IP addresses. The new device email keeps only a scrambled fingerprint of each browser and network, never the address, and forgets it after 30 days. Shared login detection uses only what the sessions already hold and calls no outside service. When an account looks shared, a copy of the sessions behind it is kept with the reasons for 7 days after the last sign, and the export and erase tools cover it.
+Sessions hold an IP address and a browser string. The plugin takes part in Tools > Export Personal Data (it lists a user's sessions) and Tools > Erase Personal Data (it lists sessions, sign-in history and reports, and signs the user out everywhere and forgets them), adds suggested text to Settings > Privacy, and can store shortened IP addresses. The new device email keeps only a scrambled fingerprint of each browser and network, never the address, and forgets it after 30 days. Shared login detection uses only what the sessions already hold and calls no outside service. Sign-in history keeps the device, the IP address as stored, the times and how each session ended for 90 days by default (you can change it, or set 0 to keep none). A "This wasn't me" report keeps the device, address and time. When an account looks shared, a copy of the sessions behind it is kept with the reasons for 7 days after the last sign, and the export and erase tools cover it.
 
 = WP-CLI =
 
@@ -47,6 +51,9 @@ Sessions hold an IP address and a browser string. The plugin takes part in Tools
 * `wp user-session-manager revoke <handle>` signs out one session.
 * `wp user-session-manager sign-out <user>` signs a user out everywhere.
 * `wp user-session-manager prune` removes expired sessions and signs out idle ones.
+* `wp user-session-manager history <user>` shows when an account signed in and how each session ended.
+* `wp user-session-manager reports` lists "This wasn't me" reports.
+* `wp user-session-manager sign-out-everyone` signs every user out, with exclusions.
 * `wp user-session-manager shared` lists accounts that look shared, with the reasons.
 * `wp user-session-manager policies` and `set-policy <role>` read and change the per-role policies.
 * `wp user-session-manager settings` reads and changes the other settings.
@@ -84,6 +91,14 @@ From the sessions it already has: the network of each IP address, the browser an
 = Will it lock out people who share an account on purpose? =
 
 No. By default it only shows a badge. Signing out every session but the newest is a choice per role, and a login is never refused. For accounts meant to be shared, such as a kiosk, set the role to "Do not check" or use the `user_session_manager_shared_login_exempt` filter.
+
+= Is the "This wasn't me" link safe? =
+
+The link holds a random token, and only a hash of it is stored. It is tied to one account and one session, works once, and expires after 7 days. Opening it only shows a page, so mail scanners that follow links do nothing. A wrong or used link gets the same page, and many wrong guesses from one address are slowed down. You can turn it off in the settings.
+
+= Why does "Sign everyone out" not email people? =
+
+An incident is a bad time for a mass email. People who are signed out see a message on the login screen. If you also require new passwords, they use "Lost your password?". Your own password is left alone so you can still sign in.
 
 = Does it work on multisite? =
 

@@ -77,7 +77,38 @@ final class SettingsPage implements Service {
 
 		if ( $hook ) {
 			add_action( "admin_print_styles-{$hook}", array( $this, 'enqueue_styles' ) );
+			add_action( "load-{$hook}", array( $this, 'help' ) );
 		}
+	}
+
+	/**
+	 * The Help tab.
+	 */
+	public function help(): void {
+		AxleUi::help_tabs(
+			array(
+				array(
+					'id'      => 'overview',
+					'title'   => __( 'Overview', 'user-session-manager' ),
+					'content' => '<p>' . esc_html__( 'Choose how long sessions last and how many a person may have, what happens when an account looks shared, and what the plugin remembers. Changes apply the next time someone signs in, except the idle timeout, which applies at once.', 'user-session-manager' ) . '</p>',
+				),
+				array(
+					'id'      => 'policies',
+					'title'   => __( 'Policies per role', 'user-session-manager' ),
+					'content' => '<p>' . esc_html__( 'Each role has its own limits. Leave a field at 0 for no limit. A person with several roles gets the most generous value of each.', 'user-session-manager' ) . '</p>',
+				),
+				array(
+					'id'      => 'emails',
+					'title'   => __( 'New sign-in email', 'user-session-manager' ),
+					'content' => '<p>' . esc_html__( 'When on, a person gets an email when they sign in from a browser and network they have not used lately. The email has a "This wasn\'t me" link. Opening the link shows a page, and nothing changes until the person presses the button on it. Then the device is signed out, the password stops working, a reset link is emailed to them and the site administrator is told.', 'user-session-manager' ) . '</p>',
+				),
+				array(
+					'id'      => 'history',
+					'title'   => __( 'Sign-in history', 'user-session-manager' ),
+					'content' => '<p>' . esc_html__( 'The history shows when and where an account signed in and how each session ended. It is kept for the number of days you set, and it is removed with the account\'s personal data. Set it to 0 to keep no history.', 'user-session-manager' ) . '</p>',
+				),
+			)
+		);
 	}
 
 	/**
@@ -86,6 +117,7 @@ final class SettingsPage implements Service {
 	public function enqueue_styles(): void {
 		AxleUi::enqueue();
 		wp_enqueue_style( 'user-session-manager', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array( AxleUi::HANDLE ), VERSION );
+		Display::enqueue_script();
 	}
 
 	/**
@@ -121,7 +153,7 @@ final class SettingsPage implements Service {
 			<p class="axle-intro"><?php esc_html_e( 'Set how many sessions each role may have and how long they last, and choose what happens when an account looks shared.', 'user-session-manager' ); ?></p>
 
 			<?php if ( $saved ) : ?>
-				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Settings saved.', 'user-session-manager' ); ?></p></div>
+				<div class="notice notice-success is-dismissible usm-notice"><p><?php esc_html_e( 'Settings saved.', 'user-session-manager' ); ?></p></div>
 			<?php endif; ?>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -135,6 +167,7 @@ final class SettingsPage implements Service {
 					esc_html_e( 'Leave a field at 0 for no limit, or for the WordPress default session length (2 days, 14 with "Remember Me"). A user with several roles gets the most generous value of each. Users with no role on this site have no limits.', 'user-session-manager' );
 					?>
 				</p>
+				<div class="axle-scroll" tabindex="0" role="region" aria-label="<?php esc_attr_e( 'Policies per role', 'user-session-manager' ); ?>">
 				<table class="widefat striped usm-policies">
 					<thead>
 						<tr>
@@ -169,6 +202,7 @@ final class SettingsPage implements Service {
 						<?php endforeach; ?>
 					</tbody>
 				</table>
+				</div>
 				<p class="description usm-shared-help">
 					<?php esc_html_e( '"Account looks shared" decides what happens when the sessions of an account look like more than one person: more than two networks at the same time, two computers or two phones on different networks at the same time, or more than four devices in a day. The account always gets a "Possibly shared" badge with the reasons. A login is never refused on this guess. Choose "Do not check" for accounts that are meant to be shared, such as a kiosk.', 'user-session-manager' ); ?>
 				</p>
@@ -198,6 +232,29 @@ final class SettingsPage implements Service {
 								<?php esc_html_e( 'days', 'user-session-manager' ); ?>
 							</p>
 							<p class="description"><?php esc_html_e( 'A browser and IP address pair not seen on the account for that long counts as new. Only a scrambled fingerprint is kept, not the address. The first login after this is turned on is remembered without an email.', 'user-session-manager' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( '"This wasn\'t me" link', 'user-session-manager' ); ?></th>
+						<td>
+							<fieldset>
+								<legend class="screen-reader-text"><?php esc_html_e( '"This wasn\'t me" link', 'user-session-manager' ); ?></legend>
+								<label><input type="checkbox" name="not_me" value="1" <?php checked( $settings['not_me'] ); ?>> <?php esc_html_e( 'Add a "This wasn\'t me" link to the new sign-in email', 'user-session-manager' ); ?></label>
+								<p>
+									<label><input type="radio" name="not_me_scope" value="all" <?php checked( 'all', $settings['not_me_scope'] ); ?>> <?php esc_html_e( 'Sign the account out everywhere (recommended)', 'user-session-manager' ); ?></label><br>
+									<label><input type="radio" name="not_me_scope" value="session" <?php checked( 'session', $settings['not_me_scope'] ); ?>> <?php esc_html_e( 'Sign out only the session the email was about', 'user-session-manager' ); ?></label>
+								</p>
+								<p class="description"><?php esc_html_e( 'The link works once and expires after 7 days. Opening it changes nothing until the person presses the button on the page. Pressing it also makes the password stop working, emails a reset link to the person, and tells the site administrator. Turn this off to remove the link and stop old links from working.', 'user-session-manager' ); ?></p>
+							</fieldset>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Sign-in history', 'user-session-manager' ); ?></th>
+						<td>
+							<label for="usm-history-days"><?php esc_html_e( 'Keep sign-in history for', 'user-session-manager' ); ?></label>
+							<input type="number" class="small-text" min="0" max="365" id="usm-history-days" name="history_days" value="<?php echo esc_attr( (string) $settings['history_days'] ); ?>">
+							<?php esc_html_e( 'days', 'user-session-manager' ); ?>
+							<p class="description"><?php esc_html_e( 'The history shows on each profile: where and when an account signed in, and how each session ended. It uses the same IP address setting as sessions. Set it to 0 to keep none. Entries older than this are deleted.', 'user-session-manager' ); ?></p>
 						</td>
 					</tr>
 					<tr>
@@ -277,7 +334,9 @@ final class SettingsPage implements Service {
 			}
 		}
 
-		$mode = isset( $_POST['limit_mode'] ) ? sanitize_key( wp_unslash( $_POST['limit_mode'] ) ) : 'evict_oldest';
+		$mode  = isset( $_POST['limit_mode'] ) ? sanitize_key( wp_unslash( $_POST['limit_mode'] ) ) : 'evict_oldest';
+		$scope = isset( $_POST['not_me_scope'] ) ? sanitize_key( wp_unslash( $_POST['not_me_scope'] ) ) : 'all';
+		$scope = in_array( $scope, Settings::NOT_ME_SCOPES, true ) ? $scope : 'all';
 
 		$this->settings->save(
 			array(
@@ -287,6 +346,9 @@ final class SettingsPage implements Service {
 				'new_device_email' => ! empty( $_POST['new_device_email'] ),
 				'device_days'      => isset( $_POST['device_days'] ) ? max( 1, min( 365, absint( $_POST['device_days'] ) ) ) : 30,
 				'mask_ip'          => ! empty( $_POST['mask_ip'] ),
+				'not_me'           => ! empty( $_POST['not_me'] ),
+				'not_me_scope'     => $scope,
+				'history_days'     => isset( $_POST['history_days'] ) ? max( 0, min( 365, absint( $_POST['history_days'] ) ) ) : 90,
 			)
 		);
 

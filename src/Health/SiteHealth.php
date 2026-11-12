@@ -8,6 +8,7 @@
 namespace AryanX\Axle\UserSessionManager\Health;
 
 use AryanX\Axle\UserSessionManager\Admin\SessionsPage;
+use AryanX\Axle\UserSessionManager\NotMe;
 use AryanX\Axle\UserSessionManager\Admin\SettingsPage;
 use AryanX\Axle\UserSessionManager\Service;
 use AryanX\Axle\UserSessionManager\Sessions;
@@ -38,14 +39,23 @@ final class SiteHealth implements Service {
 	private Sessions $sessions;
 
 	/**
+	 * "This wasn't me" reports.
+	 *
+	 * @var NotMe|null
+	 */
+	private ?NotMe $not_me;
+
+	/**
 	 * Sets up the check.
 	 *
 	 * @param Settings $settings Saved settings.
 	 * @param Sessions $sessions Session store.
+	 * @param NotMe    $not_me   "This wasn't me" reports. Without it the check skips them.
 	 */
-	public function __construct( Settings $settings, Sessions $sessions ) {
+	public function __construct( Settings $settings, Sessions $sessions, ?NotMe $not_me = null ) {
 		$this->settings = $settings;
 		$this->sessions = $sessions;
+		$this->not_me   = $not_me;
 	}
 
 	/**
@@ -85,6 +95,20 @@ final class SiteHealth implements Service {
 				__( 'Login sessions are stored where User Session Manager cannot see them', 'user-session-manager' ),
 				__( 'Another plugin moved login sessions out of user meta (the session_token_manager filter). Sessions cannot be listed, signed out, limited or timed out until that plugin is turned off.', 'user-session-manager' ),
 				$actions
+			);
+		}
+
+		$reports = null === $this->not_me ? array() : $this->not_me->events( 0, 7 );
+		if ( $reports ) {
+			return $this->result(
+				'recommended',
+				__( 'Someone reported a sign-in as "This wasn\'t me"', 'user-session-manager' ),
+				sprintf(
+					/* translators: %d: number of reports. */
+					_n( '%d sign-in was reported in the last 7 days by the owner of the account. The account was signed out and its password reset. Check the report, and ask the person how their password could have leaked.', '%d sign-ins were reported in the last 7 days by the owners of the accounts. Those accounts were signed out and their passwords reset. Check the reports, and ask the people how their passwords could have leaked.', count( $reports ), 'user-session-manager' ),
+					count( $reports )
+				),
+				sprintf( '<p><a href="%s">%s</a></p>', esc_url( SessionsPage::url() ), esc_html__( 'See the reports', 'user-session-manager' ) )
 			);
 		}
 

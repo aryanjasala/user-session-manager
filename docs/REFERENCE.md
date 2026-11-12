@@ -77,6 +77,29 @@ On your own account the row action is "Sign out everywhere else", and the questi
 
 On profiles that show the sessions table, core's own "Log Out Everywhere Else" row is hidden, since the table does the same (`user_session_manager_hide_core_sessions`).
 
+
+## This wasn't me
+
+On by default, and only used when the new device email is on. The email gets a link to `wp-login.php?action=user_session_manager_not_me&usm_key=<user ID>.<token>`. It works for 7 days (`user_session_manager_not_me_lifetime`) and once.
+
+- The link opens a page with no login needed. It says which device signed in and what pressing the button does. Opening it (a mail scanner does) changes nothing.
+- Pressing **This wasn't me, secure the account** signs the account out everywhere (setting: or only the reported session), replaces the password with one nobody knows, emails a reset link to the address on the account, records the report and emails the administrators (`user_session_manager_not_me_recipients`).
+- The token is random. Only a keyed hash is stored in the `user_session_manager_not_me` user meta, with the user, the session handle and the expiry. Hashes are compared in constant time, the link is deleted before anything happens, and at most 5 links per user are kept.
+- A wrong, expired or used link gets the same page. More than 10 wrong keys from one address in 15 minutes get a 429 (`user_session_manager_not_me_attempts`).
+- Reports (user, device, IP address as stored, time, sessions signed out) show on the profile, on Users > Sessions for 30 days, in Site Health for 7 days, in `wp user-session-manager reports` and in the `list-not-me-reports` ability. Up to 50 are kept.
+
+## Sign-in history
+
+Kept in the `user_session_manager_history` user meta, newest first: handle, device, IP address (shortened when that setting is on), start, last active, end, how it ended and who did it. It is written only when a session starts or ends, never on ordinary requests, trimmed on every write to the retention time (**Keep sign-in history for**, default 90 days, 0 keeps none) and to 100 entries (`user_session_manager_history_limit`), and cleaned hourly for users who never return. A session that ran out on its own is shown as expired once its time has passed. Sessions that started before the plugin was updated appear while active, and get an entry when they end.
+
+## The login screen message
+
+When WordPress refuses an old login cookie, the history is searched for that cookie's own session. Only a browser that held the session can match it. It then gets a 5 minute cookie, and the login screen shows "You were signed out because ..., at 14:02" once and clears it. Your own sign out shows nothing.
+
+## Sign everyone out
+
+On Users > Sessions, under the list. It shows how many sessions will end, then asks for the words `SIGN OUT` (`user_session_manager_incident_confirm_word`). Choices: keep yourself signed in, leave out roles (single sites), and **Also require new passwords**, which makes every password stop working, including for people not signed in. Nobody is emailed. Your own password is never changed. It runs in slices of a few seconds, with a progress page that carries on by itself, so a large site never hits a time limit. Each person it signs out needs `edit_user` for them. It is logged (last 20 runs), and `user_session_manager_incident_started` and `_finished` fire.
+
 ## Hooks
 
 | Hook | Type | Use |
@@ -119,6 +142,25 @@ On profiles that show the sessions table, core's own "Log Out Everywhere Else" r
 | `user_session_manager_before_bulk` | action | `( string $action, string[] $handles )`. Before a bulk sign out on Users > Sessions. `$action` is `revoke` or `sign_out` |
 | `user_session_manager_after_bulk` | action | `( string $action, string[] $handles, int $count )`. After a bulk sign out |
 | `user_session_manager_pruned` | action | `( array $result )`. After a batch of the clean-up: `users`, `expired`, `idle`, `last` and `done` |
+| `user_session_manager_not_me_enabled` | filter | `( bool $enabled )`. Whether the link is added and works. From the setting |
+| `user_session_manager_not_me_scope` | filter | `( string $scope, WP_User $user )`. `all` or `session` |
+| `user_session_manager_not_me_lifetime` | filter | `( int $seconds )`. How long a link works. Default 7 days, 1 hour to 30 days |
+| `user_session_manager_not_me_attempts` | filter | `( int $attempts )`. Wrong keys one address may try in 15 minutes. Default 10, at least 3 |
+| `user_session_manager_not_me_recipients` | filter | `( string[] $emails, WP_User $user, array $report )`. Who is told. Default the site administration address |
+| `user_session_manager_not_me_alert_email` | filter | `( array\|false $email, WP_User $user, array $report )`. The email to the administrators |
+| `user_session_manager_not_me_reset_email` | filter | `( array\|false $email, WP_User $user )`. The email with the reset link |
+| `user_session_manager_not_me_log_limit` | filter | `( int $max )`. Reports kept. Default 50 |
+| `user_session_manager_history_days` | filter | `( int $days )`. Days history is kept. 0 keeps none |
+| `user_session_manager_history_limit` | filter | `( int $limit )`. Entries kept per user. Default 100, 10 to 500 |
+| `user_session_manager_history_rows` | filter | `( int $rows )`. Rows on the profile before "Show all sign-ins". Default 20 |
+| `user_session_manager_history_reason_label` | filter | `( string $label, string $reason )`. The words for how a session ended |
+| `user_session_manager_signed_out_message` | filter | `( string $text, string $reason, int $when )`. The login screen message |
+| `user_session_manager_incident_capability` | filter | `( string $capability )`. Needed for Sign everyone out, on top of seeing every session. Default `edit_users` |
+| `user_session_manager_incident_confirm_word` | filter | `( string $word )`. The words typed to confirm. Default `SIGN OUT` |
+| `user_session_manager_not_me_reported` | action | `( WP_User $user, array $report )`. Someone pressed "This wasn't me" |
+| `user_session_manager_history_session_ended` | action | `( int $user_id, array $entry, string $reason )`. The history recorded how a session ended |
+| `user_session_manager_incident_started` | action | `( array $job )`. Sign everyone out started |
+| `user_session_manager_incident_finished` | action | `( array $entry, array $job )`. Sign everyone out visited every user |
 | `user_session_manager_settings_saved` | action | `( array $settings, array $old )`. The policies or settings changed, from the screen or WP-CLI |
 
 Every `$session` array passed to an action has `expiration`, `ip`, `ua`, `login`, `last_seen` and `handle`. Never the token or the verifier.
@@ -173,6 +215,9 @@ On WordPress 6.9 and later, User Session Manager registers [abilities](https://d
 | `user-session-manager/list-sessions` | Read-only. Sessions with handle, device, IP address, signed in, last active and expires. No input: your own. `user` (ID, login or email): that user's. `all`: everyone's. `limit`, 1 to 100, default 50 | Any logged-in user for their own. The plugin capability, `list_users` and `edit_user` for someone else's |
 | `user-session-manager/revoke-session` | Signs out the session with `handle`. Destructive and idempotent: a session that already ended returns `revoked: false` | Your own session, or the plugin capability for someone else's |
 | `user-session-manager/list-shared-logins` | Read-only. Accounts that look shared, with each reason, the sessions behind it (handle, device, IP address, country, signed in, last active), what was done and when. No input: every flagged account. `user`: only that user. `limit`, 1 to 100, default 50 | The plugin capability and `list_users` for every account. Your own account without them, or the plugin capability and `edit_user` for someone else's |
+| `user-session-manager/list-sign-in-history` | Read-only. Sign-in history with how each session ended. `user`, `limit` (1 to 200) | Yourself, or the plugin capability, `list_users` and `edit_user` |
+| `user-session-manager/list-not-me-reports` | Read-only. "This wasn't me" reports for people you may edit. `days` | The plugin capability and `list_users` |
+| `user-session-manager/sign-out-everyone` | Destructive. Sign everyone out. `confirm` must be true. `keep_current`, `exclude_roles`, `require_new_passwords` | The plugin capability and `list_users`, plus `edit_user` for each person |
 | `user-session-manager/sign-out-user` | Ends every session of `user`. Returns `sessions_ended` | Yourself, or the plugin capability for someone else |
 
 Run them over REST with `GET .../list-sessions/run?input[user]=alice` and `DELETE .../revoke-session/run?input[handle]=7-...`.
@@ -187,7 +232,10 @@ wp user-session-manager prune                           # expired and idle sessi
 wp user-session-manager shared [--fields=<fields>] [--format=table|csv|json|yaml|ids|count]   # accounts that look shared
 wp user-session-manager policies [--format=<format>]
 wp user-session-manager set-policy <role> [--max-sessions=<n>] [--idle-minutes=<n>] [--lifetime-hours=<n>] [--remember-hours=<n>] [--shared=off|flag|notify|sign_out_others]
-wp user-session-manager settings [--limit-mode=evict_oldest|block] [--new-device-email=on|off] [--device-days=<n>] [--mask-ip=on|off] [--format=json]
+wp user-session-manager history <user> [--fields=<fields>] [--format=<format>]
+wp user-session-manager reports [--days=<n>] [--format=<format>]
+wp user-session-manager sign-out-everyone [--keep-user=<user>] [--exclude-roles=<roles>] [--require-new-passwords] [--yes]
+wp user-session-manager settings [--not-me=on|off] [--not-me-scope=all|session] [--history-days=<n>] [--limit-mode=evict_oldest|block] [--new-device-email=on|off] [--device-days=<n>] [--mask-ip=on|off] [--format=json]
 ```
 
 `--user` on `list` is WP-CLI's global flag, so the command also runs as that user. Extra fields for `--fields`: `user_id`, `device_type` and `ua`.
@@ -200,6 +248,10 @@ wp user-session-manager settings [--limit-mode=evict_oldest|block] [--new-device
 | `user_session_manager_devices` user meta | Only with the new device email on: HMAC fingerprints of browser, system and IP address, with the browser label and last seen time. Entries older than 30 days are dropped |
 | `user_session_manager_shared` user meta | Only for accounts that look shared: the reasons, a copy of the sessions behind them (browser, IP address as stored, country when a filter gives one, times) and what was done. Dropped 7 days after the last sign |
 | `user_session_manager_settings` option (network option on multisite) | Per-role policies, what happens when an account looks shared, over-the-limit mode, new device email, days to remember devices, IP shortening |
+| `user_session_manager_history` user meta | Sign-in history: device, IP address as stored, times, how each session ended. Kept for the retention time, 100 entries at most |
+| `user_session_manager_not_me` user meta | Hashes of "This wasn't me" links with the session handle and expiry. 5 at most, removed when used or expired |
+| `user_session_manager_not_me_events` option | The last 50 reports (not autoloaded) |
+| `user_session_manager_incidents` option | The last 20 runs of Sign everyone out (not autoloaded) |
 | `user_session_manager_prune_cursor` option (network option on multisite) | Where the hourly clean-up carries on |
 
 The `user_session_manager_prune` cron event runs hourly, on the main site of a network. Each run looks at 500 users with sessions, removes expired ones (core only does that when the user signs in again) and signs out idle ones.
@@ -213,7 +265,8 @@ Uninstalling removes the settings, the cron event, the device memory and the sha
 Sessions hold an IP address and a browser string, which are personal data. So:
 
 - **Tools > Export Personal Data** lists a user's sessions (device, browser string, IP address, signed in, last active, expires), remembered devices and the sessions behind a shared login flag
-- **Tools > Erase Personal Data** signs the user out everywhere, forgets their devices and drops the shared login flag
+- **Tools > Erase Personal Data** signs the user out everywhere, forgets their devices, history, reports and links, and drops the shared login flag
+- The exporter also lists the sign-in history and the "This wasn't me" reports
 - **Settings > Privacy** gets suggested text for your privacy policy
 - "Store shortened IP addresses" keeps only the first three parts of an IPv4 address (the first 48 bits of IPv6), on new sessions at login and on older ones the next time they are used
 - Sessions are deleted when they end, so how long they are kept follows the session length per role. Device memory is kept for 30 days by default, a shared login flag for 7 days after the last sign

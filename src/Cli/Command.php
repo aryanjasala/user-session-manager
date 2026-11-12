@@ -8,6 +8,9 @@
 namespace AryanX\Axle\UserSessionManager\Cli;
 
 use AryanX\Axle\UserSessionManager\Abilities;
+use AryanX\Axle\UserSessionManager\History;
+use AryanX\Axle\UserSessionManager\Incident;
+use AryanX\Axle\UserSessionManager\NotMe;
 use AryanX\Axle\UserSessionManager\Pruner;
 use AryanX\Axle\UserSessionManager\Sessions;
 use AryanX\Axle\UserSessionManager\Settings;
@@ -51,18 +54,45 @@ final class Command {
 	private SharedLogins $shared;
 
 	/**
+	 * Sign-in history.
+	 *
+	 * @var History
+	 */
+	private History $history;
+
+	/**
+	 * "This wasn't me" reports.
+	 *
+	 * @var NotMe
+	 */
+	private NotMe $not_me;
+
+	/**
+	 * "Sign everyone out".
+	 *
+	 * @var Incident
+	 */
+	private Incident $incident;
+
+	/**
 	 * Sets up the command.
 	 *
 	 * @param Settings     $settings Saved settings.
 	 * @param Sessions     $sessions Session store.
 	 * @param Pruner       $pruner   The clean-up.
 	 * @param SharedLogins $shared   Shared login detection.
+	 * @param History      $history  Sign-in history.
+	 * @param NotMe        $not_me   "This wasn't me" reports.
+	 * @param Incident     $incident "Sign everyone out".
 	 */
-	public function __construct( Settings $settings, Sessions $sessions, Pruner $pruner, SharedLogins $shared ) {
+	public function __construct( Settings $settings, Sessions $sessions, Pruner $pruner, SharedLogins $shared, History $history, NotMe $not_me, Incident $incident ) {
 		$this->settings = $settings;
 		$this->sessions = $sessions;
 		$this->pruner   = $pruner;
 		$this->shared   = $shared;
+		$this->history  = $history;
+		$this->not_me   = $not_me;
+		$this->incident = $incident;
 	}
 
 	/**
@@ -184,7 +214,7 @@ final class Command {
 	}
 
 	/**
-	 * Removes expired sessions and signs out idle ones, for every user.
+	 * Removes expired sessions and signs out idle ones, for every user. Also drops sign-in history past its retention time.
 	 *
 	 * The hourly cron event does the same, 500 users per run.
 	 *
@@ -195,7 +225,148 @@ final class Command {
 	public function prune(): void {
 		$result = $this->pruner->prune_all();
 
-		\WP_CLI::success( sprintf( 'Looked at %d users. Removed %d expired and %d idle sessions.', $result['users'], $result['expired'], $result['idle'] ) );
+		$history = $this->pruner->prune_history_all();
+
+		\WP_CLI::success( sprintf( 'Looked at %d users. Removed %d expired and %d idle sessions, and %d old sign-in history entries.', $result['users'], $result['expired'], $result['idle'], $history ) );
+	}
+
+	/**
+	 * Shows when and where an account signed in, and how each session ended.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <user>
+	 * : User ID, login or email address.
+	 *
+	 * [--fields=<fields>]
+	 * : Comma-separated fields. Default device,ip,signed_in,last_active,ended,reason. Also: state, by.
+	 *
+	 * [--format=<format>]
+	 * : table, csv, json, yaml, ids or count.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp user-session-manager history editor
+	 *     wp user-session-manager history 7 --format=json
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Named arguments.
+	 */
+	public function history( array $args, array $assoc_args ): void {
+		$rows = array_map(
+			static function ( array $row ): array {
+				return array(
+					'device'      => $row['device'],
+					'ip'          => $row['ip'],
+					'signed_in'   => $row['start'] ? gmdate( 'Y-m-d H:i:s', $row['start'] ) : '',
+					'last_active' => $row['seen'] ? gmdate( 'Y-m-d H:i:s', $row['seen'] ) : '',
+					'ended'       => $row['end'] ? gmdate( 'Y-m-d H:i:s', $row['end'] ) : '',
+					'state'       => $row['state'],
+					'reason'      => 'active' === $row['state'] ? '' : ( '' !== $row['reason'] ? $row['reason'] : 'unknown' ),
+					'by'          => $row['by'],
+				);
+			},
+			$this->history->rows( $this->user_id( (string) $args[0] ) )
+		);
+
+		$format = (string) ( $assoc_args['format'] ?? 'table' );
+		$fields = isset( $assoc_args['fields'] ) ? array_map( 'trim', explode( ',', (string) $assoc_args['fields'] ) ) : array( 'device', 'ip', 'signed_in', 'last_active', 'ended', 'reason' );
+		\WP_CLI\Utils\format_items( $format, $rows, $fields );
+	}
+
+	/**
+	 * Lists sign-ins that people reported as "This wasn't me", newest first.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--days=<days>]
+	 * : Only reports from this many days back. Default 30. 0 lists every report that is kept.
+	 *
+	 * [--format=<format>]
+	 * : table, csv, json, yaml, ids or count.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp user-session-manager reports --days=7
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Named arguments.
+	 */
+	public function reports( array $args, array $assoc_args ): void {
+		$rows = array();
+		foreach ( $this->not_me->events( 0, max( 0, (int) ( $assoc_args['days'] ?? 30 ) ) ) as $event ) {
+			$user   = get_userdata( (int) $event['user'] );
+			$rows[] = array(
+				'user'     => $user ? $user->user_login : (string) $event['user'],
+				'device'   => (string) $event['device'],
+				'ip'       => (string) $event['ip'],
+				'reported' => gmdate( 'Y-m-d H:i:s', (int) $event['time'] ),
+				'scope'    => (string) $event['scope'],
+				'ended'    => (int) $event['ended'],
+			);
+		}
+
+		\WP_CLI\Utils\format_items( (string) ( $assoc_args['format'] ?? 'table' ), $rows, array( 'user', 'device', 'ip', 'reported', 'scope', 'ended' ) );
+	}
+
+	/**
+	 * Signs every user out, for an incident. Cannot be undone.
+	 *
+	 * Visits every user in batches. With --require-new-passwords every password also stops
+	 * working, so each person has to use "Lost your password?". Nobody is emailed.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--keep-user=<user>]
+	 * : Leave this user signed in: ID, login or email address.
+	 *
+	 * [--exclude-roles=<roles>]
+	 * : Comma-separated roles whose users are left alone, such as administrator.
+	 *
+	 * [--require-new-passwords]
+	 * : Also make every password stop working.
+	 *
+	 * [--yes]
+	 * : Do not ask first.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp user-session-manager sign-out-everyone --keep-user=admin
+	 *     wp user-session-manager sign-out-everyone --exclude-roles=administrator --require-new-passwords --yes
+	 *
+	 * @subcommand sign-out-everyone
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Named arguments.
+	 */
+	public function sign_out_everyone( array $args, array $assoc_args ): void {
+		$keep = 0;
+		if ( isset( $assoc_args['keep-user'] ) ) {
+			$keep = $this->user_id( (string) $assoc_args['keep-user'] );
+			wp_set_current_user( $keep );
+		}
+		$roles     = isset( $assoc_args['exclude-roles'] ) ? array_map( 'trim', explode( ',', (string) $assoc_args['exclude-roles'] ) ) : array();
+		$passwords = isset( $assoc_args['require-new-passwords'] );
+
+		\WP_CLI::confirm( 'Sign every user out' . ( $passwords ? ' and make every password stop working' : '' ) . '? This cannot be undone.', $assoc_args );
+
+		$job = $this->incident->run_all(
+			array(
+				'keep_current'  => $keep > 0,
+				'exclude_roles' => $roles,
+				'passwords'     => $passwords,
+				'via'           => 'cli',
+				'check_caps'    => false,
+			)
+		);
+
+		\WP_CLI::success( sprintf( 'Signed %d users out of %d sessions. %d passwords made unusable. %d users left out.', $job['users'], $job['sessions'], $job['passwords_set'], $job['excluded'] ) );
 	}
 
 	/**
@@ -355,6 +526,15 @@ final class Command {
 	 * [--mask-ip=<on|off>]
 	 * : Store shortened IP addresses.
 	 *
+	 * [--not-me=<on|off>]
+	 * : Add a "This wasn't me" link to the new device email.
+	 *
+	 * [--not-me-scope=<scope>]
+	 * : all (sign the account out everywhere) or session (only the reported session).
+	 *
+	 * [--history-days=<days>]
+	 * : Days sign-in history is kept. 0 keeps none.
+	 *
 	 * [--format=<format>]
 	 * : table or json, when showing.
 	 * ---
@@ -376,10 +556,19 @@ final class Command {
 			}
 			$changes['limit_mode'] = (string) $assoc_args['limit-mode'];
 		}
-		foreach ( array( 'new-device-email', 'mask-ip' ) as $flag ) {
+		if ( isset( $assoc_args['not-me-scope'] ) ) {
+			if ( ! in_array( $assoc_args['not-me-scope'], Settings::NOT_ME_SCOPES, true ) ) {
+				\WP_CLI::error( '--not-me-scope must be all or session.' );
+			}
+			$changes['not_me_scope'] = (string) $assoc_args['not-me-scope'];
+		}
+		foreach ( array( 'new-device-email', 'mask-ip', 'not-me' ) as $flag ) {
 			if ( isset( $assoc_args[ $flag ] ) ) {
 				$changes[ str_replace( '-', '_', $flag ) ] = in_array( strtolower( (string) $assoc_args[ $flag ] ), array( 'on', '1', 'yes', 'true' ), true );
 			}
+		}
+		if ( isset( $assoc_args['history-days'] ) ) {
+			$changes['history_days'] = max( 0, min( 365, (int) $assoc_args['history-days'] ) );
 		}
 		if ( isset( $assoc_args['device-days'] ) ) {
 			$changes['device_days'] = max( 1, min( 365, (int) $assoc_args['device-days'] ) );
@@ -399,7 +588,7 @@ final class Command {
 		}
 
 		foreach ( $all as $key => $value ) {
-			\WP_CLI::line( str_pad( $key . ':', 18 ) . ( is_bool( $value ) ? ( $value ? 'on' : 'off' ) : $value ) );
+			\WP_CLI::line( str_pad( $key . ':', 18 ) . ( is_bool( $value ) ? ( $value ? 'on' : 'off' ) : ( is_array( $value ) ? (string) wp_json_encode( $value ) : $value ) ) );
 		}
 	}
 

@@ -12,5 +12,5 @@ module.exports = {
 	// This plugin's own Docker site by default. A shared site can be used by pointing WP_COMPOSE_DIR at its compose folder.
 	COMPOSE_DIR: process.env.WP_COMPOSE_DIR || path.join( __dirname, '..', 'env' ),
 	// Options the plugin stores, cleared before each run.
-	OPTIONS: ['user_session_manager_settings', 'user_session_manager_prune_cursor'],
+	OPTIONS: ['user_session_manager_settings', 'user_session_manager_prune_cursor', 'user_session_manager_history_cursor', 'user_session_manager_not_me_events', 'user_session_manager_incidents'],
 };

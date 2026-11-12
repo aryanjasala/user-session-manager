@@ -1,6 +1,6 @@
 <?php
 /**
- * Removes User Session Manager's settings, device memory, shared login flags and schedule, on every site.
+ * Removes User Session Manager's settings, device memory, sign-in history, reports, shared login flags and schedule, on every site.
  *
  * The `last_seen` time the plugin adds inside core's `session_tokens` user meta
  * is left alone: core ignores it, and it goes away with each session.
@@ -17,6 +17,9 @@ function user_session_manager_uninstall_site(): void {
 	wp_clear_scheduled_hook( 'user_session_manager_prune' );
 	delete_option( 'user_session_manager_settings' );
 	delete_option( 'user_session_manager_prune_cursor' );
+	delete_option( 'user_session_manager_history_cursor' );
+	delete_option( 'user_session_manager_not_me_events' );
+	delete_option( 'user_session_manager_incidents' );
 }
 
 if ( is_multisite() ) {
@@ -42,6 +45,9 @@ if ( is_multisite() ) {
 	// Settings are network-wide on multisite.
 	delete_site_option( 'user_session_manager_settings' );
 	delete_site_option( 'user_session_manager_prune_cursor' );
+	delete_site_option( 'user_session_manager_history_cursor' );
+	delete_site_option( 'user_session_manager_not_me_events' );
+	delete_site_option( 'user_session_manager_incidents' );
 } else {
 	user_session_manager_uninstall_site();
 }
@@ -49,3 +55,7 @@ if ( is_multisite() ) {
 // The device memory for the new device email and the shared login flags are user meta, shared across a network.
 delete_metadata( 'user', 0, 'user_session_manager_devices', '', true );
 delete_metadata( 'user', 0, 'user_session_manager_shared', '', true );
+// Sign-in history, "This wasn't me" links and the dismissed "Get started" card.
+delete_metadata( 'user', 0, 'user_session_manager_history', '', true );
+delete_metadata( 'user', 0, 'user_session_manager_not_me', '', true );
+delete_metadata( 'user', 0, 'user_session_manager_hide_steps', '', true );

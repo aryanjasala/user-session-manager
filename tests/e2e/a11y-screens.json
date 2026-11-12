@@ -1,114 +1,718 @@
 {
   "$comment": "Screens tests/e2e/a11y.spec.js checks with axe-core. This file belongs to the plugin: apply-template.py only writes it when it is missing. The fields are described in docs/DEVELOPMENT.md.",
-  "include": ["#wpbody-content"],
+  "include": [
+    "#wpbody-content"
+  ],
   "exclude": [],
   "screens": [
     {
       "name": "Profile > Your sessions",
       "url": "/wp-admin/profile.php",
-      "include": [".usm-profile"]
+      "include": [
+        ".usm-profile"
+      ]
     },
     {
       "name": "Another user's profile with sessions and the sign-out question",
       "setup": [
-        { "js": "seed.js", "call": "createPeople" },
-        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4], ["maria", "android", "203.0.113.90", 1800, 95]]] },
-        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "maria",
+                "windows",
+                "192.0.2.18",
+                180,
+                4
+              ],
+              [
+                "maria",
+                "android",
+                "203.0.113.90",
+                1800,
+                95
+              ]
+            ]
+          ]
+        },
+        {
+          "wp": [
+            "user",
+            "get",
+            "maria",
+            "--field=ID"
+          ],
+          "save": "maria"
+        }
       ],
       "url": "/wp-admin/user-edit.php?user_id={maria}&usm_confirm=sign_out",
-      "steps": [{ "waitFor": ".usm-confirm-inline" }],
-      "include": [".usm-profile"],
-      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+      "steps": [
+        {
+          "waitFor": ".usm-confirm-inline"
+        }
+      ],
+      "include": [
+        ".usm-profile"
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
     },
     {
       "name": "Another user's profile with a \"Possibly shared\" account",
       "setup": [
-        { "js": "seed.js", "call": "createPeople" },
-        { "js": "seed.js", "call": "markShared", "args": ["maria"] },
-        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "markShared",
+          "args": [
+            "maria"
+          ]
+        },
+        {
+          "wp": [
+            "user",
+            "get",
+            "maria",
+            "--field=ID"
+          ],
+          "save": "maria"
+        }
       ],
       "url": "/wp-admin/user-edit.php?user_id={maria}",
-      "steps": [{ "waitFor": ".usm-shared" }],
-      "include": [".usm-profile"],
-      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+      "steps": [
+        {
+          "waitFor": ".usm-shared"
+        }
+      ],
+      "include": [
+        ".usm-profile"
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
     },
     {
       "name": "Users > Sessions with every signed-in device",
       "setup": [
-        { "js": "seed.js", "call": "createPeople" },
-        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4], ["james", "edge", "198.51.100.12", 50, 12], ["priya", "iphone", "192.0.2.200", 1200, 180]]] }
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "maria",
+                "windows",
+                "192.0.2.18",
+                180,
+                4
+              ],
+              [
+                "james",
+                "edge",
+                "198.51.100.12",
+                50,
+                12
+              ],
+              [
+                "priya",
+                "iphone",
+                "192.0.2.200",
+                1200,
+                180
+              ]
+            ]
+          ]
+        }
       ],
       "url": "/wp-admin/users.php?page=user-sessions",
-      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
     },
     {
       "name": "Users > Sessions, nobody matches the filter",
       "setup": [
-        { "js": "seed.js", "call": "createPeople" },
-        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "wp": [
+            "user",
+            "get",
+            "maria",
+            "--field=ID"
+          ],
+          "save": "maria"
+        }
       ],
       "url": "/wp-admin/users.php?page=user-sessions&user_id={maria}",
-      "steps": [{ "waitFor": ".axle-empty" }],
-      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+      "steps": [
+        {
+          "waitFor": ".axle-empty"
+        }
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
     },
     {
       "name": "Users > Sessions, confirming a sign out everywhere",
       "setup": [
-        { "js": "seed.js", "call": "createPeople" },
-        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4]]] },
-        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "maria",
+                "windows",
+                "192.0.2.18",
+                180,
+                4
+              ]
+            ]
+          ]
+        },
+        {
+          "wp": [
+            "user",
+            "get",
+            "maria",
+            "--field=ID"
+          ],
+          "save": "maria"
+        }
       ],
       "url": "/wp-admin/users.php?page=user-sessions&action=sign_out&user={maria}",
-      "steps": [{ "waitFor": ".usm-confirm" }],
-      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+      "steps": [
+        {
+          "waitFor": ".usm-confirm"
+        }
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
     },
     {
       "name": "Users > Sessions, the \"Possibly shared\" view with the reasons",
       "setup": [
-        { "js": "seed.js", "call": "createPeople" },
-        { "js": "seed.js", "call": "markShared", "args": ["maria"] },
-        { "js": "seed.js", "call": "addSessions", "args": [[["james", "edge", "198.51.100.12", 50, 12]]] },
-        { "wp": ["user", "get", "maria", "--field=ID"], "save": "maria" }
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "markShared",
+          "args": [
+            "maria"
+          ]
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "james",
+                "edge",
+                "198.51.100.12",
+                50,
+                12
+              ]
+            ]
+          ]
+        },
+        {
+          "wp": [
+            "user",
+            "get",
+            "maria",
+            "--field=ID"
+          ],
+          "save": "maria"
+        }
       ],
       "url": "/wp-admin/users.php?page=user-sessions&shared=1&user_id={maria}",
-      "steps": [{ "waitFor": ".usm-shared" }, { "waitFor": ".subsubsub" }],
-      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+      "steps": [
+        {
+          "waitFor": ".usm-shared"
+        },
+        {
+          "waitFor": ".subsubsub"
+        }
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
     },
     {
       "name": "Users list with the Sessions column",
       "setup": [
-        { "js": "seed.js", "call": "createPeople" },
-        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4]]] }
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "maria",
+                "windows",
+                "192.0.2.18",
+                180,
+                4
+              ]
+            ]
+          ]
+        }
       ],
       "url": "/wp-admin/users.php",
-      "include": [".column-usm_sessions"],
-      "cleanup": [{ "js": "seed.js", "call": "removePeople" }]
+      "include": [
+        ".column-usm_sessions"
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
     },
     {
       "name": "Settings > User Sessions with policies per role",
       "setup": [
-        ["user-session-manager", "set-policy", "administrator", "--max-sessions=3", "--idle-minutes=60", "--lifetime-hours=12"],
-        ["user-session-manager", "set-policy", "subscriber", "--max-sessions=1", "--remember-hours=720"],
-        ["user-session-manager", "settings", "--new-device-email=on"]
+        [
+          "user-session-manager",
+          "set-policy",
+          "administrator",
+          "--max-sessions=3",
+          "--idle-minutes=60",
+          "--lifetime-hours=12"
+        ],
+        [
+          "user-session-manager",
+          "set-policy",
+          "subscriber",
+          "--max-sessions=1",
+          "--remember-hours=720"
+        ],
+        [
+          "user-session-manager",
+          "settings",
+          "--new-device-email=on"
+        ]
       ],
       "url": "/wp-admin/options-general.php?page=user-session-manager",
-      "cleanup": [["option", "delete", "user_session_manager_settings"]]
+      "cleanup": [
+        [
+          "option",
+          "delete",
+          "user_session_manager_settings"
+        ]
+      ]
     },
     {
       "name": "Login refused over the session limit",
       "setup": [
-        { "js": "seed.js", "call": "createPeople" },
-        { "js": "seed.js", "call": "addSessions", "args": [[["maria", "windows", "192.0.2.18", 180, 4]]] },
-        ["user-session-manager", "set-policy", "editor", "--max-sessions=1"],
-        ["user-session-manager", "settings", "--limit-mode=block"]
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "maria",
+                "windows",
+                "192.0.2.18",
+                180,
+                4
+              ]
+            ]
+          ]
+        },
+        [
+          "user-session-manager",
+          "set-policy",
+          "editor",
+          "--max-sessions=1"
+        ],
+        [
+          "user-session-manager",
+          "settings",
+          "--limit-mode=block"
+        ]
       ],
       "loggedOut": true,
       "url": "/wp-login.php",
-      "steps": [{ "logIn": "maria", "password": "demo-password-123" }, { "waitFor": "#login_error" }],
-      "include": ["#login_error"],
+      "steps": [
+        {
+          "logIn": "maria",
+          "password": "demo-password-123"
+        },
+        {
+          "waitFor": "#login_error"
+        }
+      ],
+      "include": [
+        "#login_error"
+      ],
       "cleanup": [
-        ["option", "delete", "user_session_manager_settings"],
-        { "js": "seed.js", "call": "removePeople" }
+        [
+          "option",
+          "delete",
+          "user_session_manager_settings"
+        ],
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
+    },
+    {
+      "name": "Another user's profile with sign-in history and a \"This wasn't me\" report",
+      "setup": [
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addReport",
+          "args": [
+            "maria"
+          ]
+        },
+        {
+          "wp": [
+            "user",
+            "get",
+            "maria",
+            "--field=ID"
+          ],
+          "save": "maria"
+        }
+      ],
+      "url": "/wp-admin/user-edit.php?user_id={maria}",
+      "steps": [
+        {
+          "waitFor": ".usm-history"
+        }
+      ],
+      "include": [
+        ".usm-profile"
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removeReport"
+        },
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
+    },
+    {
+      "name": "Profile with no sign-in history yet",
+      "setup": [
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "wp": [
+            "user",
+            "get",
+            "maria",
+            "--field=ID"
+          ],
+          "save": "maria"
+        }
+      ],
+      "url": "/wp-admin/user-edit.php?user_id={maria}#usm-history",
+      "steps": [
+        {
+          "waitFor": "#usm-history"
+        }
+      ],
+      "include": [
+        ".usm-profile"
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
+    },
+    {
+      "name": "Profile with sign-in history turned off",
+      "setup": [
+        [
+          "user-session-manager",
+          "settings",
+          "--history-days=0"
+        ]
+      ],
+      "url": "/wp-admin/profile.php#usm-history",
+      "include": [
+        ".usm-profile"
+      ],
+      "cleanup": [
+        [
+          "option",
+          "delete",
+          "user_session_manager_settings"
+        ]
+      ]
+    },
+    {
+      "name": "Profile, asking before signing a session out",
+      "setup": [
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "maria",
+                "windows",
+                "192.0.2.18",
+                180,
+                4
+              ]
+            ]
+          ]
+        },
+        {
+          "wp": [
+            "user",
+            "get",
+            "maria",
+            "--field=ID"
+          ],
+          "save": "maria"
+        }
+      ],
+      "url": "/wp-admin/user-edit.php?user_id={maria}",
+      "steps": [
+        {
+          "click": ".usm-sessions a[data-usm-confirm]"
+        },
+        {
+          "waitFor": ".usm-confirm-box"
+        }
+      ],
+      "include": [
+        ".usm-profile"
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
+    },
+    {
+      "name": "Users > Sessions with reports and the Get started card",
+      "setup": [
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addReport",
+          "args": [
+            "maria"
+          ]
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "maria",
+                "windows",
+                "192.0.2.18",
+                180,
+                4
+              ]
+            ]
+          ]
+        }
+      ],
+      "url": "/wp-admin/users.php?page=user-sessions",
+      "steps": [
+        {
+          "waitFor": ".usm-reports"
+        },
+        {
+          "waitFor": ".usm-steps"
+        },
+        {
+          "waitFor": ".usm-danger"
+        }
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removeReport"
+        },
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
+    },
+    {
+      "name": "Users > Sessions, asking before signing everyone out",
+      "url": "/wp-admin/users.php?page=user-sessions&usm_incident=1",
+      "steps": [
+        {
+          "waitFor": ".usm-incident-form"
+        }
+      ]
+    },
+    {
+      "name": "Users > Sessions, the confirmation words did not match",
+      "url": "/wp-admin/users.php?page=user-sessions&usm_incident=1&usm_error=typed",
+      "steps": [
+        {
+          "waitFor": ".notice-error"
+        }
+      ]
+    },
+    {
+      "name": "Settings > User Sessions with the new options",
+      "setup": [
+        [
+          "user-session-manager",
+          "settings",
+          "--not-me-scope=session",
+          "--history-days=30"
+        ]
+      ],
+      "url": "/wp-admin/options-general.php?page=user-session-manager",
+      "cleanup": [
+        [
+          "option",
+          "delete",
+          "user_session_manager_settings"
+        ]
+      ]
+    },
+    {
+      "name": "Was this you? page from the new device email",
+      "setup": [
+        {
+          "js": "seed.js",
+          "call": "createPeople"
+        },
+        {
+          "js": "seed.js",
+          "call": "addSessions",
+          "args": [
+            [
+              [
+                "maria",
+                "windows",
+                "192.0.2.18",
+                180,
+                4
+              ]
+            ]
+          ]
+        },
+        {
+          "js": "seed.js",
+          "call": "makeNotMe",
+          "args": [
+            "maria"
+          ],
+          "save": "link"
+        }
+      ],
+      "loggedOut": true,
+      "url": "{link}",
+      "steps": [
+        {
+          "waitFor": "button[type=submit]"
+        }
+      ],
+      "include": [
+        "#login"
+      ],
+      "cleanup": [
+        {
+          "js": "seed.js",
+          "call": "removePeople"
+        }
+      ]
+    },
+    {
+      "name": "This link no longer works page",
+      "loggedOut": true,
+      "url": "/wp-login.php?action=user_session_manager_not_me&usm_key=3.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "steps": [
+        {
+          "waitFor": ".message"
+        }
+      ],
+      "include": [
+        "#login"
+      ],
+      "cleanup": [
+        [
+          "eval",
+          "global $wpdb; $wpdb->query( \"DELETE FROM $wpdb->options WHERE option_name LIKE '%usm_nm_%'\" );"
+        ]
       ]
     }
   ],

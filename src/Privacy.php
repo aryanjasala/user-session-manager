@@ -48,18 +48,36 @@ final class Privacy implements Service {
 	private SharedLogins $shared;
 
 	/**
+	 * Sign-in history.
+	 *
+	 * @var History|null
+	 */
+	private ?History $history;
+
+	/**
+	 * "This wasn't me" links and reports.
+	 *
+	 * @var NotMe|null
+	 */
+	private ?NotMe $not_me;
+
+	/**
 	 * Sets up the privacy tools.
 	 *
 	 * @param Settings     $settings Saved settings.
 	 * @param Sessions     $sessions Session store.
 	 * @param NewDevice    $devices  Device memory.
 	 * @param SharedLogins $shared   Shared login flags.
+	 * @param History      $history  Sign-in history.
+	 * @param NotMe        $not_me   "This wasn't me" links and reports.
 	 */
-	public function __construct( Settings $settings, Sessions $sessions, NewDevice $devices, SharedLogins $shared ) {
+	public function __construct( Settings $settings, Sessions $sessions, NewDevice $devices, SharedLogins $shared, ?History $history = null, ?NotMe $not_me = null ) {
 		$this->settings = $settings;
 		$this->sessions = $sessions;
 		$this->devices  = $devices;
 		$this->shared   = $shared;
+		$this->history  = $history;
+		$this->not_me   = $not_me;
 	}
 
 	/**
@@ -166,6 +184,58 @@ final class Privacy implements Service {
 				);
 			}
 
+			foreach ( null === $this->history ? array() : $this->history->rows( $user->ID ) as $index => $row ) {
+				$data[] = array(
+					'group_id'    => 'user-session-manager-history',
+					'group_label' => __( 'Sign-in history', 'user-session-manager' ),
+					'item_id'     => 'user-session-manager-history-' . $index,
+					'data'        => array(
+						array(
+							'name'  => __( 'Device', 'user-session-manager' ),
+							'value' => $row['device'],
+						),
+						array(
+							'name'  => __( 'IP address', 'user-session-manager' ),
+							'value' => $row['ip'],
+						),
+						array(
+							'name'  => __( 'Signed in', 'user-session-manager' ),
+							'value' => $row['start'] ? wp_date( $format, $row['start'] ) : '',
+						),
+						array(
+							'name'  => __( 'Last active', 'user-session-manager' ),
+							'value' => $row['seen'] ? wp_date( $format, $row['seen'] ) : '',
+						),
+						array(
+							'name'  => __( 'How it ended', 'user-session-manager' ),
+							'value' => 'active' === $row['state'] ? __( 'Still signed in', 'user-session-manager' ) : History::reason_label( '' !== $row['reason'] ? $row['reason'] : 'unknown' ),
+						),
+					),
+				);
+			}
+
+			foreach ( null === $this->not_me ? array() : $this->not_me->events( $user->ID ) as $index => $event ) {
+				$data[] = array(
+					'group_id'    => 'user-session-manager-not-me',
+					'group_label' => __( '"This wasn\'t me" reports', 'user-session-manager' ),
+					'item_id'     => 'user-session-manager-not-me-' . $index,
+					'data'        => array(
+						array(
+							'name'  => __( 'Reported', 'user-session-manager' ),
+							'value' => wp_date( $format, (int) $event['time'] ),
+						),
+						array(
+							'name'  => __( 'Device', 'user-session-manager' ),
+							'value' => (string) $event['device'],
+						),
+						array(
+							'name'  => __( 'IP address', 'user-session-manager' ),
+							'value' => (string) $event['ip'],
+						),
+					),
+				);
+			}
+
 			$flag = $this->shared->get( $user->ID );
 			foreach ( $flag ? $flag['sessions'] : array() as $handle => $session ) {
 				$data[] = array(
@@ -220,7 +290,9 @@ final class Privacy implements Service {
 			$ended   = $this->sessions->count( $user->ID ) > 0 ? $this->sessions->sign_out_everywhere( $user->ID, 'privacy' ) : 0;
 			$forgot  = $this->devices->forget( $user->ID );
 			$flagged = $this->shared->forget( $user->ID );
-			$removed = $ended > 0 || $forgot || $flagged;
+			$history = null !== $this->history && $this->history->forget( $user->ID );
+			$reports = null !== $this->not_me && ( $this->not_me->forget_events( $user->ID ) | $this->not_me->forget_links( $user->ID ) );
+			$removed = $ended > 0 || $forgot || $flagged || $history || $reports;
 			if ( $ended > 0 ) {
 				$messages[] = sprintf(
 					/* translators: %d: number of sessions. */
@@ -251,11 +323,12 @@ final class Privacy implements Service {
 			: __( 'the IP address', 'user-session-manager' );
 
 		$text = sprintf(
-			/* translators: 1: "the IP address" or "a shortened IP address", 2: number of days, 3: number of days. */
-			__( 'When you sign in, WordPress keeps a record of the session: %1$s and browser it came from, when it started, when it was last used and when it ends. The record is deleted when you sign out or the session ends. You can see your sessions on your profile and sign any of them out. If new sign-in emails are on, a scrambled fingerprint of each browser and IP address you sign in from is kept for %2$d days, so we can tell you about a sign-in from a new device. If your sessions look like more than one person uses your account, for example two computers on different networks at the same time, a copy of those sessions (browser, IP address and times) is kept with the reason for %3$d days after the last time it happened.', 'user-session-manager' ),
+			/* translators: 1: "the IP address" or "a shortened IP address", 2: number of days, 3: number of days, 4: number of days. */
+			__( 'When you sign in, WordPress keeps a record of the session: %1$s and browser it came from, when it started, when it was last used and when it ends. The record is deleted when you sign out or the session ends. You can see your sessions on your profile and sign any of them out. If new sign-in emails are on, a scrambled fingerprint of each browser and IP address you sign in from is kept for %2$d days, so we can tell you about a sign-in from a new device. If your sessions look like more than one person uses your account, for example two computers on different networks at the same time, a copy of those sessions (browser, IP address and times) is kept with the reason for %3$d days after the last time it happened. A sign-in history keeps the device, the same address, the times and how each session ended for %4$d days. If you answer a new sign-in email with "This wasn\'t me", the device, address and time of that report are kept for the site administrators.', 'user-session-manager' ),
 			$ip,
 			$this->settings->device_days(),
-			SharedLoginDetector::RULES['keep_days']
+			SharedLoginDetector::RULES['keep_days'],
+			$this->settings->history_days()
 		);
 
 		wp_add_privacy_policy_content( __( 'User Session Manager', 'user-session-manager' ), '<p>' . esc_html( $text ) . '</p>' );

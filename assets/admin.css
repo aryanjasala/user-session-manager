@@ -152,7 +152,7 @@
 	.usm-sessions tr,
 	.usm-policies tr {
 		padding: 8px 0;
-		border-bottom: 1px solid #f0f0f1;
+		border-bottom: 1px solid var(--axle-neutral-bg);
 	}
 
 	.usm-sessions td[data-colname],
@@ -185,4 +185,50 @@
 .usm-page .button.axle-button--danger,
 .usm-profile .button.axle-button--danger {
 	color: var(--axle-error-text);
+}
+
+/* Sign-in history, reports and "Sign everyone out". */
+.usm-profile .usm-history {
+	margin-top: 8px;
+}
+
+.usm-profile .usm-report {
+	max-width: 1100px;
+	margin: 8px 0 16px;
+}
+
+.usm-page .usm-spinner {
+	float: none;
+	margin: 0 4px 0 0;
+	vertical-align: middle;
+}
+
+.usm-incident-form {
+	max-width: 760px;
+}
+
+.usm-incident-roles {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 16px;
+	margin: 0 0 8px;
+	list-style: none;
+}
+
+.usm-incident-log {
+	margin: 0 0 0 1.5em;
+	list-style: disc;
+}
+
+.usm-page .usm-report-table {
+	margin-top: 8px;
+}
+
+.usm-page .axle-scroll .tablenav {
+	height: auto;
+}
+
+/* Links inside table cells keep their underline, so they do not rely on colour alone. */
+.usm-page .usm-report-table td a {
+	text-decoration: underline;
 }

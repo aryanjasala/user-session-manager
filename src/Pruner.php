@@ -39,14 +39,23 @@ final class Pruner implements Service {
 	private Sessions $sessions;
 
 	/**
+	 * Sign-in history, cleaned past its retention time.
+	 *
+	 * @var History|null
+	 */
+	private ?History $history;
+
+	/**
 	 * Sets up the clean-up.
 	 *
 	 * @param Settings $settings Saved settings.
 	 * @param Sessions $sessions Session store.
+	 * @param History  $history  Sign-in history to clean as well. Without it only sessions are cleaned.
 	 */
-	public function __construct( Settings $settings, Sessions $sessions ) {
+	public function __construct( Settings $settings, Sessions $sessions, ?History $history = null ) {
 		$this->settings = $settings;
 		$this->sessions = $sessions;
+		$this->history  = $history;
 	}
 
 	/**
@@ -72,6 +81,32 @@ final class Pruner implements Service {
 	public function run(): void {
 		$result = $this->prune( (int) get_site_option( self::CURSOR, 0 ), $this->batch_size() );
 		update_site_option( self::CURSOR, $result['done'] ? 0 : $result['last'] );
+
+		if ( null !== $this->history ) {
+			$history = $this->history->prune( (int) get_site_option( History::CURSOR, 0 ), $this->batch_size() );
+			update_site_option( History::CURSOR, $history['done'] ? 0 : $history['last'] );
+		}
+	}
+
+	/**
+	 * Cleans the sign-in history of every user, for WP-CLI.
+	 *
+	 * @return int Entries removed.
+	 */
+	public function prune_history_all(): int {
+		if ( null === $this->history ) {
+			return 0;
+		}
+
+		$removed = 0;
+		$after   = 0;
+		do {
+			$result   = $this->history->prune( $after, $this->batch_size() );
+			$removed += $result['removed'];
+			$after    = $result['last'];
+		} while ( ! $result['done'] );
+
+		return $removed;
 	}
 
 	/**
